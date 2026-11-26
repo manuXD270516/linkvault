@@ -161,17 +161,66 @@ al archivar este change (no se toca desde esta rama: ADR-072 no está en `main`)
 Sin migración: mismas claves de `chrome.storage.local`, mismo formato. Una sesión guardada por la versión anterior sigue
 sirviendo. Rollback = revertir el commit y reconstruir la extensión.
 
-## Debate
+## Debate (ronda 1) y decisión: aparcado (2026-11-26)
 
-Pendiente (`/lv:debate`, critic/business/reflect).
+Participaron `critic` y `business`; la sesión principal actuó como `reflect`. Crítico: 0 P0, P1 en H1-H4 y P2 en
+H5-H12. Negocio: 1 V0 (B1), V1 en B2-B3 y V2 en B4-B6. **Decisión de reflect (2026-11-26): aparcar el change.** Q1 = (c): no se aplica, y el design no se reescribe para
+cerrar los hallazgos; quedan registrados abajo para cuando se reabra. El crítico recomendaba Q1 (b); negocio, aparcar.
+
+### Negocio (B1-B6)
+
+| id | sev | resumen | qué hacer al reabrir |
+| --- | --- | --- | --- |
+| B1 | V0 | `staging-host` deja la extensión fuera del alcance de los invitados (`openspec/changes/staging-host/proposal.md:52-54` y `design.md:61`, Non-Goals «la extensión del navegador para estos usuarios»): el change no llega a nadie en 35b | Reabrir solo si se cumple «Cuándo» (abajo) |
+| B2 | V1 | Alto riesgo de que nadie lo use: la extensión no está en 35b y las carreras piden acciones en ventanas de cientos de ms cada 15 min | Reabrir con señal de uso |
+| B3 | V1 | El alcance cubre un segundo contexto que no existe: Web Locks, modo `reissue`, escenarios «Otro contexto ya avanzó la sesión» y «El hermano llega primero» | Recortar a compare-and-set con mutex en memoria y guardia D4, unas 5 tareas |
+| B4 | V2 | El plan tiene 10 tareas, no 9 | Usar la cifra correcta (10 en este plan; el recortado se cuenta de nuevo) |
+| B5 | V2 | Fusionar la fila 42 no lo adelanta: con un solo contexto, la reemisión no cambia nada | Nada; la fila 43 lo dice |
+| B6 | V2 | Q2 depende del alcance | Q2 (b) si quedan Web Locks; (a) más `build`, `build-firefox` y `lint-firefox` si se recorta |
+
+### Crítico (H1-H12)
+
+| id | sev | resumen | qué hacer al reabrir |
+| --- | --- | --- | --- |
+| H1 | P1 | Deadlock por reentrada si el compare-and-set llama a `writeSession`/`clearSession`, que también toman `withSessionLock` | Primitivas internas sin lock dentro de la sección y test «rejects a nested acquisition» |
+| H2 | P1 | Si la compuerta del servidor falso retiene la rotación, «Otro contexto ya avanzó la sesión» pasa también en `main` | La compuerta aplica la rotación al recibir y solo retiene la entrega |
+| H3 | P1 | Una respuesta descartada resuelve con la sesión de otra cuenta y `authorizedJson` reintenta con ella (`api.ts:169-170`): un `saveLink` de la cuenta A se guarda en la B | Resolver con la sesión vigente solo si tiene el mismo `user.id`; si no, `401` |
+| H4 | P1 | La 1.1 pasa de 1 h | Partir la 1.1 en 1.1a, 1.1b y 1.1c, y la 2.2 en tests e implementación |
+| H5 | P2 | «El hermano llega primero» no reproduce un bug de `main` | Marcarlo como especificación del orden, no como rojo |
+| H6 | P2 | El guardia sin reemisión es frágil | Fijar el orden «A entregado → B `409` → B reintenta» y anotar en R2 el caso «agotado antes del hermano» |
+| H7 | P2 | Si los reintentos se agotan sin borrar, el refresh sigue lanzando `409` | Resolver con la sesión vigente, con la misma regla que H3 |
+| H8 | P2 | El guardia con `setImmediate` de la 2.4 es frágil | N vueltas del bucle de eventos o un temporizador real |
+| H9 | P2 | El guardia D4 es textual | Buscar también `'/api/auth/extension/refresh'` fuera de `lib/api.ts` y excluir `src/lib/testing/**` en `tsconfig.app.json` |
+| H10 | P2 | Firefox podría no cargar `background.service_worker` en MV3 | Hallazgo independiente: change aparte (ver abajo) |
+| H11 | P2 | Gravedad sobrestimada: el access token viejo ya vale 15 min; el daño real es de interfaz y de estado pegado, porque un `401 invalid_refresh` no borra la sesión | Reescribir el «Why» y, si se hace, borrar con compare-and-set ante `invalid_refresh` |
+| H12 | P2 | La cita `refresh.ts:35-48` es 34-48, y el respaldo en memoria es silencioso | Corregir la cita; con el recorte de B3 el mutex en memoria deja de ser respaldo |
+
+Convergencia: NO (aparcado por B1)
+
+### Condiciones para reabrir
+
+- **Cuándo:** la extensión entra en el alcance de un change con usuarios reales, o la medición de 35b muestra demanda
+  de la extensión.
+- **Alcance recortado (B3):** compare-and-set con mutex en memoria (sin `navigator.locks`); tests de logout, login y
+  reintentos agotados en modo `noReissue`; guardia D4 reforzada (H9). Unas 5 tareas; `tasks.md` se rehace con ese
+  alcance.
+- **Antes del apply:** resolver H1 (reentrada), H3 (misma cuenta), H7 y H11.
+- **Q2:** según B6.
+
+### Hallazgo independiente: H10
+
+Puede que Firefox no cargue `background.service_worker` en MV3, que es lo que exige
+`apps/extension/scripts/lint-firefox-manifest.mjs` para Firefox ≥ 121. Hay que verificarlo. Si se confirma, la extensión de Firefox no
+tendría service worker y nada de lo que depende de él (login, refresh, guardado) funcionaría. No depende de este change
+ni queda aparcado con él: se verifica en un change aparte.
 
 ## Aprobación humana
 
-Pendiente.
+No aplica mientras el change esté aparcado (decisión de reflect del 2026-11-26, Q1 = c).
 
 ## Open Questions
 
-- **Q1 [bloqueante para `/opsx:apply`]** Precedencia: ¿se aplica y fusiona antes de cerrar la fila 35, como excepción de
+- **Q1 [cerrada: (c), aparcado por reflect el 2026-11-26 tras B1]** Precedencia: ¿se aplica y fusiona antes de cerrar la fila 35, como excepción de
   la misma clase que ADR-055 §1 (sin despliegue, workflows ni `platform/*`; solo `apps/extension`)? Opciones: (a) sí,
   en su rama y con fusión en una ventana autorizada; (b) se aplica en su rama y se fusiona después de 35c; (c) se
   aparca hasta 35c. **Recomendación: (a)**, sobre todo si `session-refresh-abort` se fusiona antes de la primera
