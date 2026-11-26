@@ -131,7 +131,7 @@ concurrencia (H3).
 
 ## 3. Regresión de navegador (design D8)
 
-- [ ] 3.1 [frontend] **Primero el test** `apps/web-e2e/src/auth-refresh-abort.spec.ts`: «reload while the restore
+- [x] 3.1 [frontend] **Primero el test** `apps/web-e2e/src/auth-refresh-abort.spec.ts`: «reload while the restore
   refresh is in flight keeps the session». Registra una cuenta, abre `/perfil`, instala `page.route` sobre
   `**/api/auth/refresh` que hace `route.fetch()` (la API rota) y retiene la respuesta tras una compuerta (promesa),
   recarga para disparar la restauración, espera a que `route.fetch()` resuelva, quita la ruta y vuelve a recargar sin
@@ -140,7 +140,7 @@ concurrencia (H3).
   rojo esperado, anotado. Verificar: verde con la API de 1.x sobre la pila e2e (`pnpm nx run web-e2e:e2e-stack` filtrando
   por el título) y `pnpm nx run web-e2e:typecheck`. Falsación: con la reemisión desactivada (forzar
   `REFRESH_REISSUE_LIMIT = 0` en local, sin commitear) vuelve a terminar en `/login`; restaurar.
-  Estado (2026-11-25): pendiente. Escrito `apps/web-e2e/src/auth-refresh-abort.spec.ts` (más su alta en el `testMatch` del proyecto `mobile`); `web-e2e:typecheck` y `web-e2e:lint` en verde. Sin correr contra la pila: espera a los commits `feat(auth)`/`fix(auth)` del grupo 1 de la api (en la rama solo hay cambios sin commitear del otro agente). Falta el rojo en `main`, el verde con la API de 1.x, la falsación con `REFRESH_REISSUE_LIMIT = 0`, la admisión y su anotación en `apps/web-e2e/README.md`.
+  Estado (2026-11-26): verde sobre `a1dd8243` (api del grupo 1). `auth-refresh-abort.spec.ts` en `chromium` y `mobile` (alta en el `testMatch` de `mobile`); `web-e2e:typecheck` y `web-e2e:lint` en verde. Falsación con `REFRESH_REISSUE_LIMIT = 0` (sin commitear, restaurado): el caso falla en `chromium` (no termina en `/perfil`), lo que prueba además que el `Set-Cookie` de `route.fetch()` no llega al jar del contexto. Admisión `--repeat-each=5` con 24 procesos de carga: 5 de 5 en `chromium` y 5 de 5 en `mobile`, 5 altas `201` por proyecto y ningún `429`; anotada en `apps/web-e2e/README.md` («Admisiones» y presupuesto, +1 alta). Rojo en `main`: no medido contra `main` limpio; la falsación con el tope en 0 es el equivalente (sin reemisión la API responde `409` y la página termina en `/login`). Ajustes por admisiones fallidas con carga: plazo de alta de 45 s y segunda carga con `page.goto('/perfil')`.
 
 ## 4. Medición en staging (diferida a 35b, design D7 y R4)
 

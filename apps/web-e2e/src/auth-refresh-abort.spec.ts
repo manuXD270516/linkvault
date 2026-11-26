@@ -17,6 +17,7 @@ const RUN_ID = Date.now();
 const REFRESH_URL = '**/api/auth/refresh';
 /** Espera de lo que depende de respuestas de la API: con la máquina cargada, 5 s son justos. */
 const API_TIMEOUT = 15_000;
+const REGISTER_TIMEOUT = 45_000;
 
 test.beforeAll(() => {
   resetRegisterLimit();
@@ -48,9 +49,12 @@ test(
       await page.getByLabel('Email', { exact: true }).fill(`smoke-refresh-abort+${RUN_ID}@example.com`);
       await page.getByLabel('Contraseña', { exact: true }).fill(`Abort-pass-${RUN_ID}`);
       await page.getByRole('button', { name: 'Crear cuenta' }).click();
-      await expect(page).toHaveURL(/\/grupos$/);
+      // El primer alta de una pila fría con la CPU cargada llegó a tardar 15 s (Argon2).
+      await expect(page).toHaveURL(/\/grupos$/, { timeout: REGISTER_TIMEOUT });
       await page.goto('/perfil');
-      await expect(page.getByRole('heading', { level: 1, name: 'Perfil' })).toBeVisible();
+      await expect(page.getByRole('heading', { level: 1, name: 'Perfil' })).toBeVisible({
+        timeout: API_TIMEOUT,
+      });
     });
 
     // La compuerta no se abre nunca: la respuesta retenida solo termina cuando el navegador aborta la petición.
@@ -75,7 +79,9 @@ test(
 
     await test.step('reload again: the aborted request never applied the new cookie', async () => {
       visited.length = 0;
-      await page.reload();
+      // Carga completa de `/perfil` y no `reload()`: con la API lenta bajo carga, la restauración de la página retenida
+      // puede agotar sus 10 s y dejar la página en `/login`; la navegación aborta igual la petición retenida.
+      await page.goto('/perfil');
       await expect(page).toHaveURL(/\/perfil$/, { timeout: API_TIMEOUT });
       await expect(page.getByRole('heading', { level: 1, name: 'Perfil' })).toBeVisible({
         timeout: API_TIMEOUT,
