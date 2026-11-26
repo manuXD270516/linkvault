@@ -127,6 +127,7 @@ concurrencia (H3).
   rojo esperado, anotado. Verificar: verde con la API de 1.x sobre la pila e2e (`pnpm nx run web-e2e:e2e-stack` filtrando
   por el título) y `pnpm nx run web-e2e:typecheck`. Falsación: con la reemisión desactivada (forzar
   `REFRESH_REISSUE_LIMIT = 0` en local, sin commitear) vuelve a terminar en `/login`; restaurar.
+  Estado (2026-11-25): pendiente. Escrito `apps/web-e2e/src/auth-refresh-abort.spec.ts` (más su alta en el `testMatch` del proyecto `mobile`); `web-e2e:typecheck` y `web-e2e:lint` en verde. Sin correr contra la pila: espera a los commits `feat(auth)`/`fix(auth)` del grupo 1 de la api (en la rama solo hay cambios sin commitear del otro agente). Falta el rojo en `main`, el verde con la API de 1.x, la falsación con `REFRESH_REISSUE_LIMIT = 0`, la admisión y su anotación en `apps/web-e2e/README.md`.
 
 ## 4. Medición en staging (diferida a 35b, design D7 y R4)
 
