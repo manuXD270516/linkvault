@@ -150,9 +150,11 @@ concurrencia (H3).
   de la guía**, sin copiar tokens ni otros datos. Umbral: si hay `refreshTokenReused` en **2 o más personas** distintas
   en 14 días, se reabre Q2. Verificar: el informe del día 14 de 35b trae la tabla (persona anonimizada, reemisiones,
   reusos) y la decisión sobre Q2; si la tarea no se pudo hacer, la fila 42 lo dice con su motivo.
+  Estado (2026-11-26): archivada con esta tarea diferida (B3); se mide en la ventana de 35b.
 
 ## 5. Cierre
 
-- [ ] 5.1 [infra] Anotar en ADR-072 §Estado el PR y la fecha de fusión; actualizar la fila 42 de `docs/design-v0.2.md`
+- [x] 5.1 [infra] Anotar en ADR-072 §Estado el PR y la fecha de fusión; actualizar la fila 42 de `docs/design-v0.2.md`
   §6 a «archivado» al archivar, dejando la 4.1 explícita como diferida a 35b. Verificar: `openspec validate --all
   --strict --no-interactive` y `bash infra/ci/repo-checks.sh` en verde tras `/opsx:archive`.
+  Estado (2026-11-26): `pnpm nx affected -t lint,typecheck,test,i18n-check --base=origin/main` con lint, typecheck e i18n-check en verde; `api:test` dio timeouts de hook por carga en la corrida completa y en verde aislado (`pnpm nx run api:test --skip-nx-cache -- --maxWorkers=2`: 294 ficheros, 3887 tests pasan, 16 omitidos); `bash infra/ci/repo-checks.sh` y `openspec validate session-refresh-abort --strict --no-interactive` en verde; ADR-072 §Estado y fila 42 actualizados («archivado»). Archivado con la tarea 4.1 diferida a 35b (B3).
