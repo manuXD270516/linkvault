@@ -109,8 +109,10 @@ export class AuthController {
   }
 
   /**
-   * Rota el refresh token de la cookie. `invalid_refresh` borra la cookie; `refresh_conflict` (409) no la toca: otra
-   * petición del mismo navegador ya fijó la del sucesor.
+   * Rota el refresh token de la cookie. Un token rotado hace menos de 10 s cuyo sucesor no se usó se reemite con `200`
+   * y cookie nueva (la respuesta de la rotación anterior se dio por perdida, ADR-072). `invalid_refresh` borra la
+   * cookie; `refresh_conflict` (409) no la toca, pero no implica que el navegador ya tenga la cookie del sucesor: solo
+   * que el sucesor ya se usó, que el token quedó superado o que se alcanzó el tope de reemisiones.
    */
   @Public()
   @Post('refresh')

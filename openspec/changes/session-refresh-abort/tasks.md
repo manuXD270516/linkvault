@@ -78,7 +78,7 @@ concurrencia (H3).
   de un hermano a la vez» repetido 20 veces con `Promise.all` como complemento. Verificar: en verde 3 corridas seguidas.
   Falsación: quitar `advancedAt: null` del filtro de la reemisión hace fallar el primero; restaurar.
   Estado (2026-11-25): «sibling rotation commits first, then the reissue gets conflict», «Tres refresh concurrentes…» y «two concurrent rotations…» actualizados (rojo previo a 1.3/1.4: devolvían `conflict`), carrera de 20 repeticiones con `Promise.all` como complemento; verde en 3 corridas seguidas (31/31 de los ficheros de repositorio). Falsación sin `advancedAt: null` en el filtro de la reemisión: NO hace fallar el test: al confirmar la rotación primero, la reemisión pausada recibe `WriteConflict` sobre el padre, `withTransaction` la reintenta y la política ya ve `advanced` y devuelve `conflict`; el filtro es la segunda barrera.
-- [ ] 1.7 [backend] Depende de 1.2. Doble en memoria, caso de uso y aviso (D7, H7). **Primero el test** en
+- [x] 1.7 [backend] Depende de 1.2. Doble en memoria, caso de uso y aviso (D7, H7). **Primero el test** en
   `application/refresh-session.usecase.spec.ts`: «Respuesta de rotación perdida» (rota, descarta, avanza 2 s, vuelve
   a refrescar con el token viejo: en `main` lanza `RefreshConflict`, rojo esperado) y «reports a reissue with userId,
   sessionId and reissueCount and without any token». Después: `InMemorySessionRepository.rotate` en
@@ -90,17 +90,21 @@ concurrencia (H3).
   `AuthSecurity`, y `grep -n "LOG_LEVEL" docker-compose.prod.yml` muestra `info` por defecto. Falsación: si el aviso
   incluyera el token, «with ids only» falla; con `LOG_LEVEL: 'warn'` la línea de `info` no aparece (prueba de que el test
   mira el nivel).
-- [ ] 1.8 [backend] Depende de 1.4 y 1.7. HTTP web. **Primero el test** en `presentation/auth.controller.refresh.spec.ts`
+  Estado (2026-11-26): rojo en `main`: 5 tests de `refresh-session.usecase.spec.ts` (entre ellos «Respuesta de rotación perdida», que lanzaba `RefreshConflict`); verde 75/75 en `application/` y `nest-auth-security-log.spec.ts`. El doble en memoria aplica las mismas reglas que Mongo (reemisión, supersesión, tope, contador ausente). `info` llega a pino con `LOG_LEVEL: 'info'` y desaparece con `'warn'`; `docker-compose.prod.yml:275` fija `LOG_LEVEL: ${LOG_LEVEL:-info}` en la api. Falsación con el token en lugar del `sessionId` en el aviso: falla «reports a reissue…»; restaurado.
+- [x] 1.8 [backend] Depende de 1.4 y 1.7. HTTP web. **Primero el test** en `presentation/auth.controller.refresh.spec.ts`
   (app completa, Mongo del preset): «Respuesta de rotación perdida» (registro → refresh con R1 → se ignora el
   `Set-Cookie` → reloj +2 s → refresh con R1 da `200` con `Set-Cookie` R3 ≠ R1, R2; en `main`, `409`), «Respuesta
   perdida fuera de la ventana» (+11 s: `401`, cookie borrada) y «Tres refresh concurrentes con el mismo token» y
   «Refresh concurrente» actualizados a los escenarios nuevos. Verificar: el fichero en verde; actualizar el comentario
   de `auth.controller.ts:111-114` para que no afirme que un `409` implica una cookie ya fijada.
-- [ ] 1.9 [backend] Depende de 1.4. HTTP extensión. **Primero el test** en `presentation/extension-auth.controller.spec.ts`:
+  Estado (2026-11-26): `auth.controller.refresh.spec.ts` verde 10/10 con la app completa. El rojo en `main` se reprodujo forzando `REFRESH_REISSUE_LIMIT = 0` (equivale a la política anterior): «Respuesta de rotación perdida» recibía `409` y «Tres refresh concurrentes» `[200, 409, 409]`; restaurado a 3. «Respuesta perdida fuera de la ventana» da `401` con cookie borrada. Comentario de `auth.controller.ts` actualizado: el `409` ya no implica que la cookie del sucesor esté fijada.
+- [x] 1.9 [backend] Depende de 1.4. HTTP extensión. **Primero el test** en `presentation/extension-auth.controller.spec.ts`:
   «Respuesta perdida en la extensión» (en `main`, `409`) y «Rotación por cuerpo» actualizado (R1 rechazado una vez usado
   R2); ninguna respuesta lleva `Set-Cookie` de `lv_refresh`. Verificar: en verde.
-- [ ] 1.10 [backend] Cierre de la API. Verificar: `pnpm nx affected -t lint,typecheck,test` en verde; el aviso de
+  Estado (2026-11-26): `extension-auth.controller.spec.ts` verde 14/14. Rojo equivalente a `main` (límite en 0): «Respuesta perdida en la extensión» recibía `409`. «Rotación por cuerpo» exige `409` para R1 una vez usado R2 y `401` pasada la ventana; el test «409 refresh_conflict no emite Set-Cookie» pasó a tres `200` concurrentes y un `409` posterior. Ninguna respuesta lleva `Set-Cookie` de `lv_refresh`.
+- [x] 1.10 [backend] Cierre de la API. Verificar: `pnpm nx affected -t lint,typecheck,test` en verde; el aviso de
   `nest-auth-security-log.ts` no interpola nada más que `userId`, `sessionId` y `reissueCount`.
+  Estado (2026-11-26): `pnpm nx affected -t lint,typecheck,test --base=origin/main` con lint y typecheck en verde en todos los proyectos afectados (api, web, web-e2e, repo-checks); `api:test` dio timeouts de hook por carga en la corrida completa y en verde con `nx run api:test -- --maxWorkers=2` (294 ficheros, 3883 tests pasados, 16 omitidos). El aviso de `nest-auth-security-log.ts` interpola solo `userId`, `sessionId` y `reissueCount`.
 
 ## 2. SPA: restauración sin autoaborto (design D9)
 

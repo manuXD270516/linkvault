@@ -2,7 +2,10 @@ import type { UserProfile } from '@linkvault/shared';
 import { AI_CONSENT_TEXT_VERSION } from '@linkvault/shared';
 import type { Clock } from '../../domain/clock';
 import { EmailTaken, InvalidAccessToken } from '../../domain/errors';
-import type { RefreshSessionPolicy } from '../../domain/refresh-session';
+import {
+  REFRESH_REISSUE_LIMIT,
+  type RefreshSessionPolicy,
+} from '../../domain/refresh-session';
 import {
   resolveSessionClient,
   type SessionClient,
@@ -15,6 +18,7 @@ import type {
 } from '../ports/access-token-signer.port';
 import type {
   AuthSecurityLog,
+  ReissueEvent,
   SessionEvent,
 } from '../ports/auth-security-log.port';
 import type { PasswordHasher } from '../ports/password-hasher.port';
@@ -359,23 +363,47 @@ export class InMemorySessionRepository implements SessionRepository {
           session.revokedAt = this.clock.now();
         }
         return Promise.resolve({ outcome: 'reused', ...identity });
-      case 'reissue':
-        // La reemisión del doble llega con la tarea 1.7; hasta entonces actúa como una API sin reemisión.
-        return Promise.resolve({ outcome: 'conflict', ...identity });
+      case 'reissue': {
+        // Mismas reglas que Mongo: sin avance de la familia, con contador y por debajo del tope.
+        if (
+          token.advancedAt !== null ||
+          token.reissueCount === null ||
+          token.reissueCount >= REFRESH_REISSUE_LIMIT
+        ) {
+          return Promise.resolve({ outcome: 'conflict', ...identity });
+        }
+        token.reissueCount += 1;
+        this.insertToken(successorHash, tokenHash, identity, decision);
+        return Promise.resolve({
+          outcome: 'rotated',
+          ...identity,
+          refreshExpiresAt: decision.successorExpiresAt,
+          reissued: true,
+          reissueCount: token.reissueCount,
+        });
+      }
       case 'rotate':
         token.rotatedAt = decision.now;
         token.replacedByHash = successorHash;
-        this.tokens.set(successorHash, {
-          tokenHash: successorHash,
-          ...identity,
-          createdAt: decision.now,
-          expiresAt: decision.successorExpiresAt,
-          rotatedAt: null,
-          replacedByHash: null,
-          parentHash: tokenHash,
-          advancedAt: null,
-          reissueCount: null,
-        });
+        token.reissueCount = 0;
+        if (token.parentHash !== null) {
+          // El primer uso de un hermano avanza al padre y supera a los demás hermanos sin rotar.
+          const parent = this.tokens.get(token.parentHash);
+          if (parent) {
+            parent.advancedAt = decision.now;
+          }
+          for (const sibling of this.tokens.values()) {
+            if (
+              sibling.parentHash === token.parentHash &&
+              sibling.tokenHash !== tokenHash &&
+              sibling.rotatedAt === null
+            ) {
+              sibling.rotatedAt = decision.now;
+              sibling.advancedAt = decision.now;
+            }
+          }
+        }
+        this.insertToken(successorHash, tokenHash, identity, decision);
         return Promise.resolve({
           outcome: 'rotated',
           ...identity,
@@ -384,6 +412,25 @@ export class InMemorySessionRepository implements SessionRepository {
           reissueCount: 0,
         });
     }
+  }
+
+  private insertToken(
+    tokenHash: string,
+    parentHash: string,
+    identity: { sessionId: string; userId: string },
+    decision: { now: Date; successorExpiresAt: Date },
+  ): void {
+    this.tokens.set(tokenHash, {
+      tokenHash,
+      ...identity,
+      createdAt: decision.now,
+      expiresAt: decision.successorExpiresAt,
+      rotatedAt: null,
+      replacedByHash: null,
+      parentHash,
+      advancedAt: null,
+      reissueCount: null,
+    });
   }
 
   /** `true` si la sesión existe y no está revocada. */
@@ -400,8 +447,13 @@ export class InMemorySessionRepository implements SessionRepository {
 /** Registro de eventos de seguridad en memoria. */
 export class RecordingSecurityLog implements AuthSecurityLog {
   readonly reusedTokens: SessionEvent[] = [];
+  readonly reissuedTokens: ReissueEvent[] = [];
 
   refreshTokenReused(event: SessionEvent): void {
     this.reusedTokens.push(event);
+  }
+
+  refreshTokenReissued(event: ReissueEvent): void {
+    this.reissuedTokens.push(event);
   }
 }

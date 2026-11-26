@@ -166,11 +166,46 @@ describe('ExtensionAuthController', () => {
     expect(body.refreshToken).not.toBe(r1);
     expectNoRefreshCookie(response.headers);
 
+    // Una vez usado R2, R1 deja de aceptar un refresh: 409 dentro de la ventana y reuso después.
+    const used = await extensionRefresh(body.refreshToken);
+    expect(used.statusCode).toBe(200);
+    harness.clock.advance(2_000);
+    const conflict = await extensionRefresh(r1);
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toMatchObject({ code: 'refresh_conflict' });
+    expectNoRefreshCookie(conflict.headers);
+
     harness.clock.advance(11_000);
     const reuse = await extensionRefresh(r1);
     expect(reuse.statusCode).toBe(401);
     expect(reuse.json()).toMatchObject({ code: 'invalid_refresh' });
     expectNoRefreshCookie(reuse.headers);
+  });
+
+  it('Respuesta perdida en la extensión', async () => {
+    const email = `ext-lost-${randomUUID()}@example.com`;
+    await registerWeb(email);
+    const login = await extensionLogin(email);
+    const r1 = extensionSessionResponseSchema.parse(login.json()).refreshToken;
+    // La respuesta de esta rotación se pierde (service worker suspendido): R2 se descarta.
+    const lost = await extensionRefresh(r1);
+    expect(lost.statusCode).toBe(200);
+    const r2 = extensionSessionResponseSchema.parse(lost.json()).refreshToken;
+    harness.clock.advance(2_000);
+
+    const recovered = await extensionRefresh(r1);
+
+    expect(recovered.statusCode).toBe(200);
+    const r3 = extensionSessionResponseSchema.parse(
+      recovered.json(),
+    ).refreshToken;
+    expect(r3).not.toBe(r1);
+    expect(r3).not.toBe(r2);
+    expectNoRefreshCookie(recovered.headers);
+    // La sesión no quedó revocada: R3 rota.
+    const next = await extensionRefresh(r3);
+    expect(next.statusCode).toBe(200);
+    expectNoRefreshCookie(next.headers);
   });
 
   it('Refresh de sesión web rechazado', async () => {
@@ -218,20 +253,27 @@ describe('ExtensionAuthController', () => {
     const login = await extensionLogin(email);
     const r1 = extensionSessionResponseSchema.parse(login.json()).refreshToken;
 
+    // Tres refresh a la vez con el mismo token: los tres reciben un hermano y ninguno lleva cookie.
     const responses = await Promise.all([
       extensionRefresh(r1),
       extensionRefresh(r1),
       extensionRefresh(r1),
     ]);
-
-    const statuses = responses.map((r) => r.statusCode).sort();
-    expect(statuses).toEqual([200, 409, 409]);
+    expect(responses.map((r) => r.statusCode)).toEqual([200, 200, 200]);
     for (const response of responses) {
       expectNoRefreshCookie(response.headers);
     }
-    for (const response of responses.filter((r) => r.statusCode === 409)) {
-      expect(response.json()).toMatchObject({ code: 'refresh_conflict' });
-    }
+
+    // Usado uno de ellos, otro hermano da 409 sin cookie.
+    harness.clock.advance(1_000);
+    const [used, other] = responses.map(
+      (r) => extensionSessionResponseSchema.parse(r.json()).refreshToken,
+    );
+    expect((await extensionRefresh(used ?? '')).statusCode).toBe(200);
+    const conflict = await extensionRefresh(other ?? '');
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toMatchObject({ code: 'refresh_conflict' });
+    expectNoRefreshCookie(conflict.headers);
   });
 
   it('Tras change-password revoca refresh extensión', async () => {
