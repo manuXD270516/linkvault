@@ -108,6 +108,11 @@ rotación ve al hermano nuevo y lo supera. Sin esa escritura común, el `updateM
 insertado en paralelo (fantasma de snapshot) y quedarían dos hojas vivas. La escritura del paso 1 tiene que modificar el
 documento (un `$set` con el mismo valor no genera conflicto); por eso usa `now`.
 
+Los filtros `reissueCount: { $exists: true, ... }` y `advancedAt: null` de la reemisión son barreras redundantes: la
+política ya decide `conflict` con contador `null` o con `advanced`, y tras el `WriteConflict` la reemisión reintentada
+relee el padre. Quitarlos no rompe ningún test; lo que sostiene el invariante, y lo que se falsa en 1.5, es la escritura
+sobre el padre.
+
 **Invariante:** una vez usado un token de una generación, la sesión tiene como mucho una hoja viva por cadena. Lo
 prueban 1.5 y 1.6 intercalando dos transacciones de forma determinista en los dos órdenes (H3), con un punto de pausa
 inyectable solo en tests; la carrera repetida con `Promise.all` queda como prueba complementaria.

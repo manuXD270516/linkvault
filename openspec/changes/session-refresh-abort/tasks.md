@@ -51,8 +51,9 @@ concurrencia (H3).
   (R1 rotado y luego `$unset` de `reissueCount`: `conflict`). Después: la rama `rotate` escribe `reissueCount: 0` en el
   token rotado y `parentHash` en el hijo; la rama `reissue` hace el `updateOne` condicionado de D3 (`advancedAt` nulo,
   `reissueCount` existente y menor que el tope, `$inc`), recomprueba la sesión e inserta el hermano. Verificar: el
-  fichero en verde. Falsación: sin `$exists: true` en el filtro, «Token rotado antes de la reemisión» da `rotated`;
-  restaurar.
+  fichero en verde. Falsación: `$exists: true` es una barrera redundante (en Mongo `$lt` no casa con un campo ausente
+  y la política ya devuelve `conflict` con contador `null`), así que quitarlo no hace fallar el test; la barrera que
+  cuenta es la política (`reissueCount: null` → `conflict`, test de dominio de 1.1).
   Estado (2026-11-25): rojo en `main`: «Respuesta de rotación perdida» y «Tope de reemisiones» (los otros dos escenarios ya daban el resultado correcto en `main`); verde con la rama `reissue`. Falsación: quitar `$exists: true` NO hace fallar «Token rotado antes de la reemisión»: en Mongo `$lt` no casa con un campo ausente y la política ya devuelve `conflict` con contador `null`; el `$exists` queda como defensa redundante, tal como pide el design.
 - [x] 1.4 [backend] Depende de 1.3. Supersesión de hermanos (D3). **Primero el test** en el mismo fichero: «El hermano
   usado deja superados a los demás» (R1→R2, reemisión R3, rota R3; R2 a +1 s da `conflict` y a +11 s `reused` con la
@@ -76,7 +77,9 @@ concurrencia (H3).
   suelta: R1 `conflict`, sin hermano nuevo), «Tres refresh concurrentes con el mismo token» actualizado (tres
   `rotated`, tres hijos distintos, sesión no revocada; tras rotar uno, los otros dos dan `conflict`) y «Reemisión y uso
   de un hermano a la vez» repetido 20 veces con `Promise.all` como complemento. Verificar: en verde 3 corridas seguidas.
-  Falsación: quitar `advancedAt: null` del filtro de la reemisión hace fallar el primero; restaurar.
+  Falsación: `advancedAt: null` en el filtro de la reemisión es una barrera redundante (la
+  reemisión pausada recibe `WriteConflict` sobre el padre, se reintenta y la política ya ve `advanced`), así que
+  quitarlo no hace fallar el test; la falsación real es la escritura sobre el padre, la de 1.5.
   Estado (2026-11-25): «sibling rotation commits first, then the reissue gets conflict», «Tres refresh concurrentes…» y «two concurrent rotations…» actualizados (rojo previo a 1.3/1.4: devolvían `conflict`), carrera de 20 repeticiones con `Promise.all` como complemento; verde en 3 corridas seguidas (31/31 de los ficheros de repositorio). Falsación sin `advancedAt: null` en el filtro de la reemisión: NO hace fallar el test: al confirmar la rotación primero, la reemisión pausada recibe `WriteConflict` sobre el padre, `withTransaction` la reintenta y la política ya ve `advanced` y devuelve `conflict`; el filtro es la segunda barrera.
 - [x] 1.7 [backend] Depende de 1.2. Doble en memoria, caso de uso y aviso (D7, H7). **Primero el test** en
   `application/refresh-session.usecase.spec.ts`: «Respuesta de rotación perdida» (rota, descarta, avanza 2 s, vuelve

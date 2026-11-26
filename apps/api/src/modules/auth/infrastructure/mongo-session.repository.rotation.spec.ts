@@ -365,6 +365,100 @@ describe('MongoSessionRepository (rotation)', () => {
     expect(await revokedAt(session.sessionId)).toBeNull();
   });
 
+  describe('revocation with live siblings', () => {
+    /** R1 rotado a R2 y reemitido como R3: dos hermanos vivos, ninguno usado. */
+    async function withLiveSiblings() {
+      const session = await openSession();
+      const r2 = await rotate(session.tokenHash);
+      clock.advance(SECOND);
+      const r3 = await rotate(session.tokenHash);
+      expect(r3.result).toMatchObject({ reissued: true });
+      return { session, siblings: [r2.successorHash, r3.successorHash] };
+    }
+
+    async function expectAllRevoked(siblings: readonly string[]) {
+      for (const hash of siblings) {
+        expect((await rotate(hash)).result).toEqual({
+          outcome: 'invalid',
+          reason: 'session_revoked',
+        });
+      }
+    }
+
+    it('Logout revokes the session and every live sibling gets session_revoked', async () => {
+      const { session, siblings } = await withLiveSiblings();
+
+      await repository.revokeSession(session.sessionId);
+
+      await expectAllRevoked([session.tokenHash, ...siblings]);
+    });
+
+    it('Reuse revokes the session and every live sibling gets session_revoked', async () => {
+      const { session, siblings } = await withLiveSiblings();
+      clock.advance(11 * SECOND);
+
+      expect((await rotate(session.tokenHash)).result.outcome).toBe('reused');
+
+      await expectAllRevoked(siblings);
+    });
+
+    it('revokeUserSessionsExcept revokes the siblings of the other sessions and keeps the kept one', async () => {
+      const userId = `user-${randomUUID()}`;
+      const first = generateRefreshToken();
+      const revoked = await repository.open(userId, first.tokenHash);
+      const r2 = await rotate(first.tokenHash);
+      clock.advance(SECOND);
+      const r3 = await rotate(first.tokenHash);
+      const kept = generateRefreshToken();
+      const keptSession = await repository.open(userId, kept.tokenHash);
+
+      expect(
+        await repository.revokeUserSessionsExcept(
+          userId,
+          keptSession.sessionId,
+        ),
+      ).toBe(1);
+
+      await expectAllRevoked([r2.successorHash, r3.successorHash]);
+      expect(await revokedAt(revoked.sessionId)).not.toBeNull();
+      expect((await rotate(kept.tokenHash)).result.outcome).toBe('rotated');
+    });
+  });
+
+  it('Reemisión sin token en claro', async () => {
+    const first = generateRefreshToken();
+    const second = generateRefreshToken();
+    const third = generateRefreshToken();
+    const opened = await repository.open(
+      `user-${randomUUID()}`,
+      first.tokenHash,
+    );
+    await repository.rotate({
+      tokenHash: first.tokenHash,
+      successorHash: second.tokenHash,
+      expectedClient: 'web',
+    });
+    clock.advance(2 * SECOND);
+    const reissue = await repository.rotate({
+      tokenHash: first.tokenHash,
+      successorHash: third.tokenHash,
+      expectedClient: 'web',
+    });
+    expect(reissue).toMatchObject({ outcome: 'rotated', reissued: true });
+
+    const dump = JSON.stringify(
+      await connection
+        .collection(REFRESH_TOKENS_COLLECTION)
+        .find({ sessionId: opened.sessionId })
+        .toArray(),
+    );
+
+    for (const { token, tokenHash } of [first, second, third]) {
+      expect(dump).not.toContain(token);
+      expect(dump).toContain(tokenHash);
+    }
+  });
+
   it('rejects rotation when expectedClient does not match the session', async () => {
     const first = generateRefreshToken();
     const opened = await repository.open(
