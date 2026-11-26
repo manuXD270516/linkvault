@@ -5,10 +5,12 @@ tarea cabe en menos de una hora. Los títulos de test salen de los escenarios de
 y siguen la convención de los archivos que los alojan (los escenarios del grabador y de la auditoría ya se nombran en
 español en `record-fixtures.spec.ts` y `audit-personal-fixtures.spec.ts`). Rutas relativas a `libs/ai/src/evals/recording/`.
 
-- [ ] 0.1 [infra] Aprobación humana registrada. Verificar: `grep -c "## Aprobación humana (" proposal.md` = 1, y la
+- [x] 0.1 [infra] Aprobación humana registrada. Verificar: `grep -c "## Aprobación humana (" proposal.md` = 1, y la
   sección, con fecha, cita literalmente el pedido del owner y dice que autoriza el apply en la rama, **no** la fusión.
   Falsación: si la sección faltara o dijera que autoriza fusionar, el revisor rechaza el apply; ningún PR de esta rama
   se fusiona sin una ventana abierta por el owner.
+  Estado (2026-11-25): hecho. `proposal.md` tiene la sección `## Aprobación humana (2026-11-25)` (`grep -c` = 1) con la
+  cita «Aprobado todo ello avancemos» y el alcance: apply en la rama y PR; la fusión, cuando el owner lo diga.
 
 ## 1. Arreglo
 

@@ -55,3 +55,12 @@ Ninguna.
 - `libs/ai`: `evals/recording/record-fixtures.ts`, `evals/recording/audit-personal-fixtures.ts` y sus `*.spec.ts`.
 - Sin cambios en `apps/**`, `libs/shared`, prompts, fixtures, línea base del eval, despliegue, CI ni variables de entorno.
 - Sin ADR, sin fila en §6 y sin entrada en `openspec-changes.yaml`.
+
+## Aprobación humana (2026-11-25)
+
+El owner aprobó este change el 2026-11-25, en respuesta al pedido de aprobarlo, con la frase literal:
+
+> «Aprobado todo ello avancemos»
+
+Alcance: autoriza el apply en la rama `change/ai-record-sensitivity-guard` y la apertura del PR. **No** autoriza la
+fusión: el PR se fusiona solo cuando el owner lo diga.
