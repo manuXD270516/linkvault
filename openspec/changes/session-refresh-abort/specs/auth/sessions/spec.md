@@ -12,14 +12,15 @@ Si se rotó hace menos de 10 segundos, la API NO SHALL revocar la sesión y SHAL
   previas de ese token: la respuesta de la rotación anterior se dio por perdida. La API SHALL emitir de forma atómica un
   refresh token nuevo de la misma sesión, distinto de los anteriores, y un access token nuevo, y responder `200` como una
   sesión iniciada, con la caducidad del refresh calculada como en una rotación. La ventana de 10 segundos SHALL seguir
-  contando desde la primera rotación del token presentado. SHALL registrar un aviso informativo con el identificador de
-  usuario y de sesión, sin tokens.
+  contando desde la primera rotación del token presentado. SHALL registrar un aviso (informativo en la primera reemisión, de advertencia desde la segunda) con el identificador de
+  usuario, de sesión y el número de reemisión, sin tokens.
 - **Sucesor ya usado, o tope de 3 reemisiones alcanzado**: SHALL responder `409` con código `refresh_conflict` sin
   `Set-Cookie` (peticiones concurrentes del mismo navegador, que comparte la cookie).
 
 Cuando se rota uno de los refresh tokens emitidos a partir del mismo token, los demás que no se hayan usado SHALL quedar
 superados en ese instante: presentarlos después SHALL responder `409` `refresh_conflict` dentro de los 10 segundos
-siguientes y SHALL tratarse como reuso a partir de entonces. Un token superado NO SHALL reemitirse. La base de datos
+siguientes y SHALL tratarse como reuso a partir de entonces. Un token superado NO SHALL reemitirse, ni tampoco un token
+rotado antes de que la API incorporara la reemisión (sin contador de reemisiones): ese responde `409` como antes. La base de datos
 SHALL seguir guardando solo hashes de los refresh tokens.
 
 #### Scenario: Reuso revoca la sesión
@@ -65,6 +66,12 @@ SHALL seguir guardando solo hashes de los refresh tokens.
 - **WHEN** se llama a refresh con R1
 - **THEN** la respuesta SHALL ser `409` con código `refresh_conflict` y sin `Set-Cookie`
 - **AND** la sesión NO SHALL quedar revocada
+
+#### Scenario: Token rotado antes de la reemisión
+
+- **GIVEN** R1 rotado a R2 hace 2 segundos por una versión de la API sin reemisión, y R2 nunca presentado
+- **WHEN** se llama a refresh con R1
+- **THEN** la respuesta SHALL ser `409` con código `refresh_conflict` y sin `Set-Cookie`
 
 #### Scenario: Tres refresh concurrentes con el mismo token
 

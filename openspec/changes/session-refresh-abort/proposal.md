@@ -37,6 +37,12 @@ todos los casos el resultado es el mismo: la sesión se pierde y hay que volver 
 Locks serializa los refresh, pero si la pestaña que tiene el lock se cierra a mitad del refresh, la otra hereda el token
 viejo y termina igual.
 
+**Qué cubre este change y qué no.** Cubre recargar o navegar con el refresh en vuelo cuando la carga siguiente llega
+dentro de los 10 s de la rotación (el caso de la guía, y el de «Conectando…» en una red lenta) y la restauración del SPA
+que agota sus 10 s, que deja de cancelar su propia petición. **No** cubre cerrar la pestaña a mitad del refresh y volver
+más tarde, ni una respuesta perdida a la que el cliente vuelve pasados 10 s: siguen costando la sesión (se miden en 35b,
+Q2).
+
 ## What Changes
 
 - **Reemisión dentro de la ventana de conflicto** (API, cliente web y extensión): un refresh token rotado hace menos de
@@ -46,14 +52,19 @@ viejo y termina igual.
   superados; presentarlos después responde `409` dentro de la ventana y `401` con revocación de la sesión pasada la
   ventana, igual que un token rotado hoy.
 - **Tope de 3 reemisiones por token** y ventana anclada a la primera rotación: la reemisión no alarga los 10 s ya
-  aceptados en ADR-020.
+  aceptados en ADR-020. Los tokens rotados antes del despliegue no se reemiten.
+- **Restauración del SPA sin autoaborto**: al agotar los 10 s, el SPA sigue sin sesión como hoy, pero deja terminar la
+  petición ya enviada para que el navegador aplique la cookie; ignora el cuerpo de esa respuesta, y login, registro y
+  refresh esperan a que termine (como mucho 5 s) antes de enviar los suyos.
 - **Sin cambios** en: ventana de 10 s, detección de reuso pasada la ventana, `409` cuando el sucesor ya se usó, logout,
   cookie, hash-only en Mongo, política de reintentos del SPA y de la extensión.
-- **Aviso operativo** `refreshTokenReissued` (solo `userId` y `sessionId`, nivel `info`) para distinguir en los logs una
-  respuesta perdida de un conflicto.
+- **Aviso operativo** `refreshTokenReissued` (solo `userId`, `sessionId` y el número de reemisión; `info`, y `warn`
+  desde la segunda) para distinguir en los logs una respuesta perdida de un conflicto y medir en 35b.
 - **Regresión de punta a punta** en `apps/web-e2e`: recargar con el refresh de la restauración en vuelo conserva la
   sesión.
-- Decisión de seguridad en **ADR-072** (enmienda ADR-020 §3).
+- **Plan de medición** para 35b (tarea diferida): reemisiones y reusos por persona, con umbral para reabrir Q2.
+- Decisión de seguridad en **ADR-072** (enmienda ADR-020 §3), con el riesgo residual descrito sin atenuantes: dentro de
+  la ventana, quien presenta segundo también obtiene acceso.
 
 ## Capabilities
 
@@ -67,16 +78,21 @@ _(ninguna)_
   hermanos superados.
 - `auth/extension-sessions`: «Refresh de extensión por cuerpo» aplica la misma reemisión y aclara cuándo el token viejo
   deja de aceptarse.
-- `web/auth`: «Restauración de la sesión al cargar» suma el escenario de recarga con el refresh en vuelo.
+- `web/auth`: «Restauración de la sesión al cargar» suma la recarga con el refresh en vuelo y la restauración agotada
+  que no cancela su petición.
 
 ## Impact
 
 - `apps/api/src/modules/auth/domain/refresh-session.ts` (nueva decisión `reissue`, tope), `application/ports/`
   (`StoredRefreshToken`, `RotationResult`, `AuthSecurityLog`), `refresh-session.usecase.ts`,
-  `infrastructure/session.schemas.ts` (campos `parentHash`, `advancedAt`, `reissueCount`, opcionales para documentos
-  existentes), `mongo-session.repository.ts`, `nest-auth-security-log.ts` y el doble en memoria de
+  `infrastructure/session.schemas.ts` (campos `parentHash`, `advancedAt`, `reissueCount`, opcionales),
+  `mongo-session.repository.ts`, `nest-auth-security-log.ts` y el doble en memoria de
   `application/testing/auth-test-doubles.ts`.
-- `apps/web-e2e/src/auth-refresh-abort.spec.ts` (nuevo). Sin cambios en `apps/web/src`, `apps/extension`, `libs/`,
-  contratos de `libs/shared`, configuración, despliegue ni CI.
-- Sin migración: los documentos existentes se leen con los valores por defecto (`null`, `0`).
-- Riesgo de seguridad aceptado y acotado en ADR-072 (R1 del design): pendiente de aprobación del owner (Q1).
+- `apps/web/src/app/core/auth/session-restore.ts` y `auth.api.ts` (petición desprendida y espera de login, registro y
+  refresh).
+- `apps/web-e2e/src/auth-refresh-abort.spec.ts` (nuevo). Sin cambios en `apps/extension` (su parte de R6 va en un change
+  aparte), `libs/`, contratos de `libs/shared`, configuración, despliegue ni CI.
+- Sin migración: los documentos existentes se leen con los valores por defecto.
+- Despliegue de la api sin mezclar versiones y con relojes sincronizados (R3 del design).
+- Riesgo de seguridad descrito en ADR-072 (R1 del design): pendiente de aprobación del owner (Q1). Aplicar y fusionar
+  antes de la primera invitación de 35b: pendiente del owner (Q5).
