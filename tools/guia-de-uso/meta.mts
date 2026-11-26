@@ -115,7 +115,7 @@ export const META: Record<string, CaseMeta> = {
     r: '`/verificar-email?token=…` → `/grupos`',
     e: 'Abrir el enlace del correo; «Ir a la aplicación».',
     x: '«Email verificado» y el aviso de la barra desaparece.',
-    t: 'e2e: `auth-email-recovery.spec.ts`; unit: `features/auth/verify-email.page.spec.ts`',
+    t: 'e2e: `auth-email-recovery.spec.ts`; unit: `features/auth/verify-email.page.spec.ts` («La verificación responde antes que la restauración de la sesión», la prueba de H2: V03 en la guía es intermitente y verlo en verde es solo un indicio)',
     h: 'H2',
   },
   V04: {
@@ -163,8 +163,8 @@ export const META: Record<string, CaseMeta> = {
   F03: {
     r: '`/perfil`',
     e: 'Contraseña actual equivocada; nueva `corta`; y por último actual correcta y nueva válida; «Cambiar contraseña».',
-    x: '«La contraseña actual no es correcta»; error de longitud; «Contraseña cambiada. Cerramos tu sesión en los demás dispositivos.».',
-    t: 'e2e: `auth.spec.ts`; unit: `features/profile/profile.page.spec.ts`',
+    x: '«La contraseña actual no es correcta»; error de longitud, sin que el aviso anterior siga en pantalla; «Contraseña cambiada. Cerramos tu sesión en los demás dispositivos.».',
+    t: 'e2e: `auth.spec.ts`; unit: `features/profile/profile.page.spec.ts` («a client-invalid attempt clears the previous API error», «a new attempt clears the previous success», «both password fields use a dynamic subscript»)',
     h: 'H3',
   },
   F04: {
@@ -386,9 +386,9 @@ export const META: Record<string, CaseMeta> = {
   },
   M01: {
     r: '`/grupos/:id` · «Analizar mi encaje»',
-    e: 'Beto (sin CV) abre «Analizar mi encaje» y pulsa «Analizar».',
-    x: '«Necesitas un CV guardado…» (catálogo, paso 31).',
-    t: 'unit: `features/match/match.dialog.spec.ts`',
+    e: 'Beto (sin CV) abre «Analizar mi encaje».',
+    x: '«Necesitas un CV guardado para analizar tu encaje.» con «Subir mi CV» desde que se abre el diálogo, sin botón «Analizar» (catálogo, paso 31).',
+    t: 'unit: `features/match/match.dialog.spec.ts` («Sin CV al abrir», «Sin CV gana al permiso desconocido», «La API dice que no hay CV»)',
     h: 'H1',
   },
   M02: {

@@ -19,6 +19,9 @@ const results = JSON.parse(
 ) as CaseResult[];
 const total = results.length;
 const failed = results.filter((r) => !r.ok);
+/** Casos que fallaron en la corrida y ya tienen arreglo, todavía sin comprobar en una pasada nueva. */
+const FIXED_PENDING: Record<string, string> = { M01: 'usage-guide-fixes-2' };
+const fixedPending = failed.filter((r) => FIXED_PENDING[r.id] !== undefined);
 const shots = results.reduce((n, r) => n + r.shots.length, 0);
 
 function anchor(r: CaseResult): string {
@@ -56,7 +59,7 @@ push();
 push(`- **Fecha de las capturas y de las pruebas:** ${date}.`);
 push(`- **Commit probado:** \`${sha}\` (\`origin/main\`).`);
 push(
-  `- **Casos:** ${total} (${total - failed.length} OK, ${failed.length} FALLO). **Capturas:** ${shots}.`,
+  `- **Casos:** ${total} (${total - failed.length} OK, ${failed.length} FALLO${fixedPending.length > 0 ? `; ${fixedPending.map((f) => f.id).join(', ')} corregido por \`usage-guide-fixes-2\`, pendiente de pasada` : ''}). **Capturas:** ${shots}.`,
 );
 push(
   '- **Cómo se hicieron las capturas:** `tools/guia-de-uso/capture.mts` (ver [`tools/guia-de-uso/README.md`](../../tools/guia-de-uso/README.md)). Esta guía la arma `tools/guia-de-uso/build-guide.mts` con lo que vio ese script; no se edita a mano.',
@@ -93,12 +96,16 @@ push('| Caso | Qué se prueba | Resultado | Tu resultado |');
 push('| ---- | ------------- | --------- | ------------ |');
 for (const r of results) {
   const meta = META[r.id];
-  const verdict = r.ok ? 'OK' : `**FALLO** (${meta?.h ?? 'ver hallazgos'})`;
+  const verdict = r.ok
+    ? 'OK'
+    : FIXED_PENDING[r.id] !== undefined
+      ? 'Corregido (pendiente de pasada)'
+      : `**FALLO** (${meta?.h ?? 'ver hallazgos'})`;
   push(`| [${r.id}](#${anchor(r)}) | ${r.title} | ${verdict} | [ ] |`);
 }
 push();
 push(
-  `**Resumen:** ${total} casos, ${total - failed.length} OK, ${failed.length} FALLO${failed.length > 0 ? ` (${failed.map((f) => f.id).join(', ')})` : ''}.`,
+  `**Resumen:** ${total} casos, ${total - failed.length} OK, ${failed.length} FALLO${failed.length > 0 ? ` (${failed.map((f) => f.id).join(', ')})` : ''}${fixedPending.length > 0 ? `; ${fixedPending.map((f) => f.id).join(', ')} corregido por \`usage-guide-fixes-2\` y pendiente de comprobar en la próxima pasada` : ''}.`,
 );
 push();
 
@@ -294,7 +301,9 @@ for (const section of sections) {
     } else {
       push(`- **Visto:** ${r.seen}`);
       push(
-        `- **Resultado:** **FALLO** (hallazgo ${meta.h ?? 'sin identificar'}, ver [Hallazgos](#hallazgos))`,
+        FIXED_PENDING[r.id] !== undefined
+          ? `- **Resultado:** **Corregido (pendiente de pasada)** por \`${FIXED_PENDING[r.id]}\` (hallazgo ${meta.h ?? 'sin identificar'}); lo «Visto» es de la corrida del ${date}`
+          : `- **Resultado:** **FALLO** (hallazgo ${meta.h ?? 'sin identificar'}, ver [Hallazgos](#hallazgos))`,
       );
     }
     push(`- **Prueba automatizada:** ${meta.t}`);
@@ -397,15 +406,6 @@ push();
 push('**Producto e interfaz**');
 push();
 push(
-  '- **H1. «Analizar mi encaje» sin CV no dice que falta el CV.** Caso [M01](#caso-m01). Ruta: `/grupos/:id` → «Analizar mi encaje» con una cuenta sin CV (Beto). El diálogo abre con «Ningún CV marcado» y el botón «Analizar» activo; al pulsarlo, la API responde `409 {"code":"no_cv","message":"Upload a CV before analysing a job"}` y el diálogo dice «No pudimos analizar ahora.» con «Reintentar». El catálogo (paso 31) promete «Necesitas un CV guardado…» y el diálogo tiene ese estado (`match-no-cv`, con «Subir CV»), pero no se llega a él. Evidencia: `encaje-sin-cv` y `encaje-sin-cv-analizar`.',
-);
-push(
-  '- **H2. Tras verificar el email, el aviso de la barra puede seguir hasta recargar (intermitente).** Caso [V03](#caso-v03). Ruta: con sesión abierta, abrir en la misma pestaña el enlace `/verificar-email?token=…` → «Email verificado» → «Ir a la aplicación». En 2 de las 6 corridas completas de esta pasada, `/grupos` siguió mostrando «Tu email aún no está verificado…» hasta recargar; en las otras 4 desapareció. Causa probable (sin tocar código): `VerifyEmailPage` solo vuelve a pedir el perfil si ya hay sesión **cuando termina la verificación**; con una recarga completa, la restauración de la sesión y la verificación corren en paralelo y el perfil guardado puede ser anterior. La corrida final salió bien, así que no hay captura del estado malo; el script la toma sola (`grupos-aviso-persiste-tras-verificar`) si ocurre.',
-);
-push(
-  '- **H3. Cambiar la contraseña: los mensajes de error se superponen y uno queda viejo.** Caso [F03](#caso-f03), captura `perfil-contrasena-nueva-corta`. Tras un intento con la contraseña actual equivocada («La contraseña actual no es correcta») y otro con la nueva demasiado corta, la pantalla muestra a la vez el aviso viejo y el nuevo, con los textos montados uno sobre otro.',
-);
-push(
   '- **H4. Pegar un texto que no es una oferta da un error genérico (solo en `replay`).** Caso [K06](#caso-k06). Con `AI_MOCK_MODE=replay` un texto sin fixture lanza `FixtureMissing` y el diálogo dice «Algo salió mal. Inténtalo de nuevo» en vez de «Eso no parece una oferta de trabajo…» (que sí existe en el código). Es una limitación del mock, no del producto: con `synth` o con IA real, el mensaje depende de la respuesta. Se deja anotado porque el mensaje correcto no se puede ver con esta pila.',
 );
 push(
@@ -419,6 +419,10 @@ push(
 );
 push(
   '- **H8. La interfaz en inglés no se puede levantar con los targets del proyecto.** `apps/web/project.json` define el locale `en` pero no hay target que lo construya ni lo sirva (ADR-050 lo deja pendiente; el catálogo ya lo anota). Para esta guía se construyó con `--localize=en` y se sirvió con `tools/guia-de-uso/serve-en.mts`. Las rutas siguen en español en el build en inglés.',
+);
+push();
+push(
+  '**Corregido por `usage-guide-fixes-2`, pendiente de comprobar en la próxima pasada: M01, V03 y F03** (los hallazgos H1, H2 y H3 de esta corrida). Lo «Visto» de esos casos es lo que mostró la corrida del 2026-11-25; los arreglos los cubren tests de componente (`match.dialog.spec.ts`, `verify-email.page.spec.ts`, `profile.page.spec.ts`), y el de V03 es la prueba de H2, porque en la guía el caso es intermitente.',
 );
 push();
 push(
@@ -462,7 +466,7 @@ push(
   '- **Se quitó** el paso 15 «Plan de estudio» como sin captura: sigue sin ser alcanzable con `replay`, y ahora está en «Lo que no se pudo probar», con la pantalla del análisis inexistente (`M05`).',
 );
 push(
-  '- **Se cerraron** los hallazgos H1, H2, H4, H5 y H6 de septiembre (los corrigió `usage-guide-fixes`); siguen H3 (ahora H5) y H7 (ahora H7), y hay hallazgos nuevos (H1, H2, H3, H6 de esta guía).',
+  '- **Se cerraron** los hallazgos H1, H2, H4, H5 y H6 de septiembre (los corrigió `usage-guide-fixes`); siguen H3 (ahora H5) y H7 (ahora H7), y hay hallazgos nuevos: H1, H2 y H3 de esta guía, ya corregidos por `usage-guide-fixes-2` y pendientes de comprobar en la próxima pasada, y H6.',
 );
 push();
 

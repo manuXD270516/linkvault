@@ -14,7 +14,9 @@
   }
 
   <!-- Por dónde sale el CV: solo con permiso conocido; nunca las dos líneas a la vez. -->
-  @if (consent() === 'current') {
+  @if (phase() === 'no_cv') {
+    <!-- Sin CV no hay análisis que enrutar. -->
+  } @else if (consent() === 'current') {
     <p class="m-0 text-sm" data-testid="match-routing" i18n="@@match.dialog.routingExternal">
       Se analizará con IA externa (OpenRouter).
     </p>

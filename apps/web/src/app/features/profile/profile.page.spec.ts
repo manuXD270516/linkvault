@@ -251,6 +251,55 @@ describe('ProfilePage', () => {
     http.expectNone('/api/auth/password');
   });
 
+  it('a client-invalid attempt clears the previous API error', async () => {
+    await submitPasswordChange('contraseña-mala', 'contraseña-nueva');
+    const { body, options } = apiError('invalid_credentials', 401);
+    http.expectOne('/api/auth/password').flush(body, options);
+    await vi.waitFor(() => expect(text()).toContain('La contraseña actual no es correcta'));
+
+    await submitPasswordChange('contraseña-mala', 'corta');
+    await harness.fixture.whenStable();
+
+    expect(text()).not.toContain('La contraseña actual no es correcta');
+    expect(text()).toContain(
+      'La nueva contraseña debe tener al menos 10 caracteres y no puede ser tu email',
+    );
+    http.expectNone('/api/auth/password');
+  });
+
+  it('a new attempt clears the previous success', async () => {
+    await submitPasswordChange('contraseña-vieja', 'contraseña-nueva');
+    http.expectOne('/api/auth/password').flush(null, { status: 204, statusText: 'No Content' });
+    await vi.waitFor(() => expect(text()).toContain('Contraseña cambiada.'));
+
+    buttonWithText(host(), 'Cambiar contraseña').click();
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(text()).not.toContain('Contraseña cambiada.');
+    http.expectNone('/api/auth/password');
+  });
+
+  it('editing a field does not clear the API error', async () => {
+    await submitPasswordChange('contraseña-mala', 'contraseña-nueva');
+    const { body, options } = apiError('invalid_credentials', 401);
+    http.expectOne('/api/auth/password').flush(body, options);
+    await vi.waitFor(() => expect(text()).toContain('La contraseña actual no es correcta'));
+
+    typeInto(host(), 'input[formControlName="currentPassword"]', 'otra-contraseña');
+    await harness.fixture.whenStable();
+
+    expect(text()).toContain('La contraseña actual no es correcta');
+  });
+
+  it('both password fields use a dynamic subscript', () => {
+    for (const name of ['currentPassword', 'newPassword']) {
+      const field = input(name)?.closest('mat-form-field');
+      expect(field).not.toBeNull();
+      expect(field?.querySelector('.mat-mdc-form-field-subscript-dynamic-size')).not.toBeNull();
+    }
+  });
+
   it('shows and hides both passwords', async () => {
     const toggle = (name: string): HTMLButtonElement | null =>
       host().querySelector<HTMLButtonElement>(`[data-testid="toggle-${name}"]`);
