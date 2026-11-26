@@ -3767,378 +3767,378 @@
         <source> Se analizará con IA externa (OpenRouter). </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">19,21</context>
+          <context context-type="linenumber">21,23</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.routingInternal" datatype="html">
         <source> Se analizará dentro de LinkVault, sin salir hacia ningún proveedor externo. Si aquí no hay IA disponible, el análisis será básico y sin sugerencias. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">23,28</context>
+          <context context-type="linenumber">25,30</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.consentChecking" datatype="html">
         <source> Comprobando el permiso… </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">31,35</context>
+          <context context-type="linenumber">33,37</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.consentUnknown" datatype="html">
         <source> No pudimos comprobar si diste permiso para analizar tu CV con IA externa. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">37,39</context>
+          <context context-type="linenumber">39,41</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.retryConsent" datatype="html">
         <source> Comprobar de nuevo </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">48,50</context>
+          <context context-type="linenumber">50,52</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.changeCv" datatype="html">
         <source> Cambiar de CV </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">57,59</context>
+          <context context-type="linenumber">59,61</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">87,89</context>
+          <context context-type="linenumber">89,91</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">480,482</context>
+          <context context-type="linenumber">482,484</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.loading" datatype="html">
         <source>Cargando…</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">63,67</context>
+          <context context-type="linenumber">65,69</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.analyze" datatype="html">
         <source> Analizar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">78,80</context>
+          <context context-type="linenumber">80,82</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.giveConsent" datatype="html">
         <source> Dar permiso </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">97,99</context>
+          <context context-type="linenumber">99,101</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">303,305</context>
+          <context context-type="linenumber">305,307</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">490,492</context>
+          <context context-type="linenumber">492,494</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.waiting" datatype="html">
         <source> Estamos analizando tu encaje… </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">126,129</context>
+          <context context-type="linenumber">128,131</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.stalled" datatype="html">
         <source> Sigue en proceso. Vuelve en un momento. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">133,136</context>
+          <context context-type="linenumber">135,138</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.refresh" datatype="html">
         <source> Actualizar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">143,147</context>
+          <context context-type="linenumber">145,149</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.jobNotReady" datatype="html">
         <source> Todavía no hemos leído esta oferta, así que no hay con qué comparar tu CV. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">149,152</context>
+          <context context-type="linenumber">151,154</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.pasteDescription" datatype="html">
         <source> Pegar la descripción </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">159,163</context>
+          <context context-type="linenumber">161,165</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.noCv" datatype="html">
         <source> Necesitas un CV guardado para analizar tu encaje. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">165,167</context>
+          <context context-type="linenumber">167,169</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.uploadCv" datatype="html">
         <source> Subir mi CV </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">175,179</context>
+          <context context-type="linenumber">177,181</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.cvNotReady" datatype="html">
         <source> Estamos leyendo tu CV. Inténtalo en un momento. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">181,184</context>
+          <context context-type="linenumber">183,186</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.retry" datatype="html">
         <source> Reintentar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">191,195</context>
+          <context context-type="linenumber">193,197</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">236,240</context>
+          <context context-type="linenumber">238,242</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">326,327</context>
+          <context context-type="linenumber">328,329</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.cvNotReadable" datatype="html">
         <source> Tu CV no se pudo leer, así que no podemos compararlo. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">197,200</context>
+          <context context-type="linenumber">199,202</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.goMyCv" datatype="html">
         <source> Ir a Mi CV </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">207,211</context>
+          <context context-type="linenumber">209,213</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.rateLimit" datatype="html">
         <source>Pediste muchos análisis seguidos. Podrás pedir otro a partir de <x id="INTERPOLATION" equiv-text="{{ problem.phrase }}"/>.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">216,218</context>
+          <context context-type="linenumber">218,220</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.serverError" datatype="html">
         <source> No pudimos analizar ahora. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">226,229</context>
+          <context context-type="linenumber">228,231</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.stale" datatype="html">
         <source> Esta oferta cambió desde tu análisis </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">244,246</context>
+          <context context-type="linenumber">246,248</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.reanalyze" datatype="html">
         <source> Volver a analizar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">253,255</context>
+          <context context-type="linenumber">255,257</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">274,276</context>
+          <context context-type="linenumber">276,278</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.cvChangedNamed" datatype="html">
         <source>Lo analizaste con otro CV (<x id="INTERPOLATION" equiv-text="{{ otherName }}"/>)</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">261,262</context>
+          <context context-type="linenumber">263,264</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.cvChanged" datatype="html">
         <source>Lo analizaste con otro CV</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">264,266</context>
+          <context context-type="linenumber">266,268</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.degradedTitle" datatype="html">
         <source> Análisis básico </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">280,282</context>
+          <context context-type="linenumber">282,284</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.degradedBody" datatype="html">
         <source> Comparamos las habilidades de la oferta con las de tu CV, sin sugerencias. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">283,286</context>
+          <context context-type="linenumber">285,288</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.consentNeeded" datatype="html">
         <source> Para analizar tu CV con IA necesitamos tu permiso. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">288,290</context>
+          <context context-type="linenumber">290,292</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.consentSummary" datatype="html">
         <source>Se envía el texto de tu CV con tu email, tus teléfonos, tu dirección, tu documento de identidad y las URL sustituidos por marcadores, y también tu nombre salvo que lo desactives en Perfil; el resto del CV se envía tal cual. El texto completo y el interruptor están en Perfil.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">294,297</context>
+          <context context-type="linenumber">296,299</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.aiQuota" datatype="html">
         <source>Alcanzaste tu límite de análisis con IA por hoy. Volverás a tener análisis completos a partir de <x id="INTERPOLATION" equiv-text="{{ phrase }}"/>.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">309,311</context>
+          <context context-type="linenumber">311,313</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.aiUnavailable" datatype="html">
         <source> El análisis con IA no está disponible ahora. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">316,318</context>
+          <context context-type="linenumber">318,320</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.matchedTitle" datatype="html">
         <source>Habilidades que coinciden</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">335,336</context>
+          <context context-type="linenumber">337,338</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.matchedEmpty" datatype="html">
         <source> Ninguna de las habilidades que pide esta oferta está en tu CV </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">338,340</context>
+          <context context-type="linenumber">340,342</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.missingTitle" datatype="html">
         <source>Habilidades que faltan</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">350,351</context>
+          <context context-type="linenumber">352,353</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.missingEmpty" datatype="html">
         <source> Tienes todas las habilidades que pide esta oferta </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">353,355</context>
+          <context context-type="linenumber">355,357</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.mustLabel" datatype="html">
         <source>Imprescindible</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">357,358</context>
+          <context context-type="linenumber">359,360</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.niceLabel" datatype="html">
         <source>Suma puntos</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">365,366</context>
+          <context context-type="linenumber">367,368</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.openRoadmap" datatype="html">
         <source> Ver plan de estudio </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">384,386</context>
+          <context context-type="linenumber">386,388</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.aiWarning" datatype="html">
         <source> Estas propuestas las redactó una IA a partir de tu CV y de la oferta. Revísalas: solo tú sabes qué es cierto. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">391,393</context>
+          <context context-type="linenumber">393,395</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.applyYourself" datatype="html">
         <source> Por ahora los cambios los aplicas tú en tu CV. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">395,398</context>
+          <context context-type="linenumber">397,400</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.evidenceJob" datatype="html">
         <source>Lo pide la oferta</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">405,406</context>
+          <context context-type="linenumber">407,408</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.evidenceCv" datatype="html">
         <source>En tu CV dice</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">408,409</context>
+          <context context-type="linenumber">410,411</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.evidenceCvMissing" datatype="html">
         <source> Esto no aparece en tu CV </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">413,414</context>
+          <context context-type="linenumber">415,416</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.copy" datatype="html">
         <source> Copiar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">425,426</context>
+          <context context-type="linenumber">427,428</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.notConvinced" datatype="html">
         <source> No me convence </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">436,437</context>
+          <context context-type="linenumber">438,439</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.copied" datatype="html">
         <source>Copiado</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">439,441</context>
+          <context context-type="linenumber">441,443</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.notConvincedMarked" datatype="html">
         <source>Marcada</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">447,449</context>
+          <context context-type="linenumber">449,451</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.suggestionsMore" datatype="html">
         <source>Ver las <x id="INTERPOLATION" equiv-text="{{ remainingSuggestions() }}"/> restantes</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">464,465</context>
+          <context context-type="linenumber">466,467</context>
         </context-group>
       </trans-unit>
       <trans-unit id="match.dialog.close" datatype="html">
         <source> Cerrar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/match/match.dialog.html</context>
-          <context context-type="linenumber">501,503</context>
+          <context context-type="linenumber">503,505</context>
         </context-group>
       </trans-unit>
       <trans-unit id="notifications.back" datatype="html">
@@ -4485,7 +4485,7 @@
         <source>Cambiar la contraseña</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">39,42</context>
+          <context context-type="linenumber">39,41</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.currentPassword" datatype="html">

@@ -4,7 +4,7 @@ Recorrido por **todas las pantallas, formularios, diálogos y estados** de la ap
 
 - **Fecha de las capturas y de las pruebas:** 2026-11-25.
 - **Commit probado:** `bdb106efa262836a2902dc7f8016aeae0213291f` (`origin/main`).
-- **Casos:** 123 (122 OK, 1 FALLO). **Capturas:** 215.
+- **Casos:** 123 (122 OK, 1 FALLO; M01 corregido por `usage-guide-fixes-2`, pendiente de pasada). **Capturas:** 215.
 - **Cómo se hicieron las capturas:** `tools/guia-de-uso/capture.mts` (ver [`tools/guia-de-uso/README.md`](../../tools/guia-de-uso/README.md)). Esta guía la arma `tools/guia-de-uso/build-guide.mts` con lo que vio ese script; no se edita a mano.
 
 ## Índice
@@ -44,133 +44,133 @@ Recorrido por **todas las pantallas, formularios, diálogos y estados** de la ap
 
 Resultado de la corrida del 2026-11-25. Cada fila lleva al paso con su detalle. **FALLO** es lo que no coincide con la spec o el catálogo; está explicado en [Hallazgos](#hallazgos). Para repetir la guía a mano, cambia la última columna por tu resultado.
 
-| Caso               | Qué se prueba                                                                         | Resultado      | Tu resultado |
-| ------------------ | ------------------------------------------------------------------------------------- | -------------- | ------------ |
-| [S01](#caso-s01)   | Aviso de privacidad sin sesión                                                        | OK             | [ ]          |
-| [S02](#caso-s02)   | La raíz sin sesión lleva a «Iniciar sesión»                                           | OK             | [ ]          |
-| [S03](#caso-s03)   | Iniciar sesión: validación de campos vacíos                                           | OK             | [ ]          |
-| [S04](#caso-s04)   | Iniciar sesión: credenciales incorrectas                                              | OK             | [ ]          |
-| [S05](#caso-s05)   | Una ruta protegida sin sesión lleva a `/login?returnUrl=…`                            | OK             | [ ]          |
-| [S06](#caso-s06)   | Una ruta que no existe vuelve a la raíz                                               | OK             | [ ]          |
-| [S07](#caso-s07)   | Oferta pública que no existe                                                          | OK             | [ ]          |
-| [S08](#caso-s08)   | Verificar email con un enlace inválido                                                | OK             | [ ]          |
-| [S09](#caso-s09)   | Restablecer contraseña con un enlace inválido                                         | OK             | [ ]          |
-| [R01](#caso-r01)   | Crear cuenta: formulario vacío y validaciones                                         | OK             | [ ]          |
-| [R02](#caso-r02)   | Crear cuenta: la contraseña no puede ser el email                                     | OK             | [ ]          |
-| [R03](#caso-r03)   | Crear cuenta: Ana se registra                                                         | OK             | [ ]          |
-| [R04](#caso-r04)   | Crear cuenta con un email que ya existe                                               | OK             | [ ]          |
-| [V01](#caso-v01)   | Reenviar el correo de verificación                                                    | OK             | [ ]          |
-| [V02](#caso-v02)   | El correo «Verifica tu email en LinkVault» llega a Mailpit                            | OK             | [ ]          |
-| [V03](#caso-v03)   | Abrir el enlace: «Email verificado»                                                   | OK             | [ ]          |
-| [V04](#caso-v04)   | Abrir otra vez el mismo enlace (ya usado)                                             | OK             | [ ]          |
-| [L01](#caso-l01)   | Cerrar sesión                                                                         | OK             | [ ]          |
-| [L02](#caso-l02)   | Recuperar contraseña: validación, email inexistente y email real                      | OK             | [ ]          |
-| [L03](#caso-l03)   | Restablecer la contraseña con el enlace del correo                                    | OK             | [ ]          |
-| [L04](#caso-l04)   | La contraseña vieja ya no entra y la nueva sí; la sesión sobrevive a recargar         | OK             | [ ]          |
-| [F01](#caso-f01)   | Perfil inicial                                                                        | OK             | [ ]          |
-| [F02](#caso-f02)   | Nombre: validación y guardado                                                         | OK             | [ ]          |
-| [F03](#caso-f03)   | Contraseña: actual incorrecta, nueva demasiado corta y cambio correcto                | OK             | [ ]          |
-| [F04](#caso-f04)   | IA y privacidad por defecto                                                           | OK             | [ ]          |
-| [G01](#caso-g01)   | Tus grupos, sin ningún grupo                                                          | OK             | [ ]          |
-| [G02](#caso-g02)   | Crear un grupo: validación y alta                                                     | OK             | [ ]          |
-| [G03](#caso-g03)   | Renombrar el grupo                                                                    | OK             | [ ]          |
-| [G04](#caso-g04)   | Ajuste: los links nuevos se comparten con un enlace público                           | OK             | [ ]          |
-| [G05](#caso-g05)   | Copiar la invitación                                                                  | OK             | [ ]          |
-| [I01](#caso-i01)   | Beto abre la invitación sin sesión y se registra                                      | OK             | [ ]          |
-| [I02](#caso-i02)   | Beto pulsa «Unirme» y entra como miembro                                              | OK             | [ ]          |
-| [I03](#caso-i03)   | Ana ve a Beto entre los miembros                                                      | OK             | [ ]          |
-| [I04](#caso-i04)   | Unirse con un código inválido y con el campo vacío                                    | OK             | [ ]          |
-| [K01](#caso-k01)   | Guardar una oferta en el grupo, con una nota                                          | OK             | [ ]          |
-| [K02](#caso-k02)   | Guardar la misma URL otra vez                                                         | OK             | [ ]          |
-| [K03](#caso-k03)   | URL inválida y nota demasiado larga                                                   | OK             | [ ]          |
-| [K04](#caso-k04)   | La oferta que no se puede leer: «No pudimos leer esta oferta» y «Reintentar»          | OK             | [ ]          |
-| [K05](#caso-k05)   | Completar la oferta a mano                                                            | OK             | [ ]          |
-| [K06](#caso-k06)   | Pegar la descripción: texto que no es una oferta y texto de una oferta                | OK             | [ ]          |
-| [K07](#caso-k07)   | Deshacer lo pegado                                                                    | OK             | [ ]          |
-| [K08](#caso-k08)   | Importar un chat                                                                      | OK             | [ ]          |
-| [K09](#caso-k09)   | Editar una oferta pegada y «Volver a lo anterior»                                     | OK             | [ ]          |
-| [K10](#caso-k10)   | Quitar una oferta del grupo                                                           | OK             | [ ]          |
-| [A01](#caso-a01)   | Tablero vacío (persona sin postulaciones)                                             | OK             | [ ]          |
-| [A02](#caso-a02)   | Insights sin postulaciones                                                            | OK             | [ ]          |
-| [A03](#caso-a03)   | «Postulé»: ¿cuándo postulaste?, fecha futura y «Hoy»                                  | OK             | [ ]          |
-| [A04](#caso-a04)   | Compartir el estado con el grupo: «Qué verán», «Compartir», «Deshacer»                | OK             | [ ]          |
-| [A05](#caso-a05)   | «Me interesa» en otra oferta y el aviso se cierra al navegar                          | OK             | [ ]          |
-| [A06](#caso-a06)   | Tablero con columnas                                                                  | OK             | [ ]          |
-| [A07](#caso-a07)   | Detalle: mover a «En proceso» con etapa, nota y compartir                             | OK             | [ ]          |
-| [A08](#caso-a08)   | Cerrar una postulación: «¿Cómo se cerró?»                                             | OK             | [ ]          |
-| [A09](#caso-a09)   | Insights con postulaciones                                                            | OK             | [ ]          |
-| [A10](#caso-a10)   | Dejar de seguir                                                                       | OK             | [ ]          |
-| [C01](#caso-c01)   | Mi CV vacío                                                                           | OK             | [ ]          |
-| [C02](#caso-c02)   | Archivos que no se aceptan: tipo y tamaño                                             | OK             | [ ]          |
-| [C03](#caso-c03)   | Subir el CV en PDF: «Estamos leyendo tu CV…» y «Listo»                                | OK             | [ ]          |
-| [C04](#caso-c04)   | «Ver lo que leímos»                                                                   | OK             | [ ]          |
-| [C05](#caso-c05)   | Un CV sin texto (escaneo) y «Usar el que sí se leyó»                                  | OK             | [ ]          |
-| [C06](#caso-c06)   | Eliminar un CV                                                                        | OK             | [ ]          |
-| [M01](#caso-m01)   | Sin CV: «Necesitas un CV guardado»                                                    | **FALLO** (H1) | [ ]          |
-| [M02](#caso-m02)   | Analizar mi encaje: informe del fixture de replay                                     | OK             | [ ]          |
-| [M03](#caso-m03)   | Sugerencia: «Copiar» y «No me convence»                                               | OK             | [ ]          |
-| [M04](#caso-m04)   | El tablero muestra el badge de encaje                                                 | OK             | [ ]          |
-| [M05](#caso-m05)   | Plan de estudio: un análisis que no existe                                            | OK             | [ ]          |
-| [N01](#caso-n01)   | Beto ve la oferta con el estado compartido de Ana                                     | OK             | [ ]          |
-| [N02](#caso-n02)   | Comentar: validación y publicación                                                    | OK             | [ ]          |
-| [N03](#caso-n03)   | «Conozco a alguien ahí»                                                               | OK             | [ ]          |
-| [N04](#caso-n04)   | Ana ve el comentario y el conteo en vivo, y borra el comentario ajeno                 | OK             | [ ]          |
-| [N05](#caso-n05)   | Quitar la nota propia                                                                 | OK             | [ ]          |
-| [N06](#caso-n06)   | Fijar, etiquetar y filtrar                                                            | OK             | [ ]          |
-| [E01](#caso-e01)   | Copiar el enlace público de una tarjeta                                               | OK             | [ ]          |
-| [E02](#caso-e02)   | Carla abre el enlace sin sesión                                                       | OK             | [ ]          |
-| [E03](#caso-e03)   | Guardar desde el enlace público: registro y «Solo para mí»                            | OK             | [ ]          |
-| [E04](#caso-e04)   | Dejar de compartir                                                                    | OK             | [ ]          |
-| [E05](#caso-e05)   | Volver a compartir con un enlace público                                              | OK             | [ ]          |
-| [P01](#caso-p01)   | Guardar una oferta en la lista privada                                                | OK             | [ ]          |
-| [P02](#caso-p02)   | «Me interesa» y «Quitar»                                                              | OK             | [ ]          |
-| [P03](#caso-p03)   | Oferta ya guardada en un grupo propio                                                 | OK             | [ ]          |
-| [P04](#caso-p04)   | Oferta cerrada y «Reabrir»                                                            | OK             | [ ]          |
-| [P05](#caso-p05)   | Pegar un chat en «Solo para mí»                                                       | OK             | [ ]          |
-| [D01](#caso-d01)   | Descubrir vacantes (función apagada en la pila)                                       | OK             | [ ]          |
-| [D02](#caso-d02)   | Buscar (función apagada en la pila)                                                   | OK             | [ ]          |
-| [T01](#caso-t01)   | Preferencias de aviso: guardar y comprobar que persisten                              | OK             | [ ]          |
-| [T02](#caso-t02)   | Grupo para avisos de estado                                                           | OK             | [ ]          |
-| [T03](#caso-t03)   | Push del navegador (sin claves VAPID)                                                 | OK             | [ ]          |
-| [T04](#caso-t04)   | Avisos por email en Mailpit                                                           | OK             | [ ]          |
-| [B01](#caso-b01)   | Conceder y retirar el permiso de IA externa                                           | OK             | [ ]          |
-| [B02](#caso-b02)   | Idioma de los análisis y ocultar el nombre                                            | OK             | [ ]          |
-| [B03](#caso-b03)   | Clave propia (BYOK): validación y guardado sin bóveda                                 | OK             | [ ]          |
-| [X01](#caso-x01)   | Beto se une con un código desde «Unirse con un código»                                | OK             | [ ]          |
-| [X02](#caso-x02)   | El propietario no puede salir sin ceder la propiedad                                  | OK             | [ ]          |
-| [X03](#caso-x03)   | Expulsar y regenerar el código                                                        | OK             | [ ]          |
-| [X04](#caso-x04)   | El código anterior ya no sirve                                                        | OK             | [ ]          |
-| [X05](#caso-x05)   | Regenerar el código a mano                                                            | OK             | [ ]          |
-| [X06](#caso-x06)   | Ceder la propiedad y salir                                                            | OK             | [ ]          |
-| [X07](#caso-x07)   | Borrar el grupo                                                                       | OK             | [ ]          |
-| [X08](#caso-x08)   | Un grupo que no existe                                                                | OK             | [ ]          |
-| [V01m](#caso-v01m) | Móvil: aviso de privacidad e inicio de sesión                                         | OK             | [ ]          |
-| [V02m](#caso-v02m) | Móvil: /grupos                                                                        | OK             | [ ]          |
-| [V03m](#caso-v03m) | Móvil: /grupos/6b0685dc439d6452ee3dfc78                                               | OK             | [ ]          |
-| [V04m](#caso-v04m) | Móvil: /postulaciones                                                                 | OK             | [ ]          |
-| [V05m](#caso-v05m) | Móvil: /mi-cv                                                                         | OK             | [ ]          |
-| [V06m](#caso-v06m) | Móvil: /perfil                                                                        | OK             | [ ]          |
-| [V07m](#caso-v07m) | Móvil: /notificaciones                                                                | OK             | [ ]          |
-| [V08m](#caso-v08m) | Móvil: /mis-links                                                                     | OK             | [ ]          |
-| [V09m](#caso-v09m) | Móvil: /buscar                                                                        | OK             | [ ]          |
-| [V10m](#caso-v10m) | Móvil: /descubrir                                                                     | OK             | [ ]          |
-| [V11m](#caso-v11m) | Móvil: el informe de encaje en pantalla completa                                      | OK             | [ ]          |
-| [V12m](#caso-v12m) | Móvil: comentarios en pantalla completa                                               | OK             | [ ]          |
-| [W01](#caso-w01)   | Interfaz en inglés (build `--localize=en`): sin sesión                                | OK             | [ ]          |
-| [W02](#caso-w02)   | Inglés: grupos                                                                        | OK             | [ ]          |
-| [W03](#caso-w03)   | Inglés: detalle del grupo                                                             | OK             | [ ]          |
-| [W04](#caso-w04)   | Inglés: postulaciones                                                                 | OK             | [ ]          |
-| [W05](#caso-w05)   | Inglés: mi-cv                                                                         | OK             | [ ]          |
-| [W06](#caso-w06)   | Inglés: perfil                                                                        | OK             | [ ]          |
-| [W07](#caso-w07)   | Inglés: notificaciones                                                                | OK             | [ ]          |
-| [W08](#caso-w08)   | Inglés: mis-links                                                                     | OK             | [ ]          |
-| [W09](#caso-w09)   | Inglés: informe de encaje                                                             | OK             | [ ]          |
-| [W10](#caso-w10)   | Modo oscuro: la aplicación no lo soporta                                              | OK             | [ ]          |
-| [Z01](#caso-z01)   | Diego se registra y crea un grupo con Beto dentro                                     | OK             | [ ]          |
-| [Z02](#caso-z02)   | No se puede borrar la cuenta siendo el único propietario de un grupo con más miembros | OK             | [ ]          |
-| [Z03](#caso-z03)   | Ceder el grupo y borrar la cuenta                                                     | OK             | [ ]          |
+| Caso               | Qué se prueba                                                                         | Resultado                       | Tu resultado |
+| ------------------ | ------------------------------------------------------------------------------------- | ------------------------------- | ------------ |
+| [S01](#caso-s01)   | Aviso de privacidad sin sesión                                                        | OK                              | [ ]          |
+| [S02](#caso-s02)   | La raíz sin sesión lleva a «Iniciar sesión»                                           | OK                              | [ ]          |
+| [S03](#caso-s03)   | Iniciar sesión: validación de campos vacíos                                           | OK                              | [ ]          |
+| [S04](#caso-s04)   | Iniciar sesión: credenciales incorrectas                                              | OK                              | [ ]          |
+| [S05](#caso-s05)   | Una ruta protegida sin sesión lleva a `/login?returnUrl=…`                            | OK                              | [ ]          |
+| [S06](#caso-s06)   | Una ruta que no existe vuelve a la raíz                                               | OK                              | [ ]          |
+| [S07](#caso-s07)   | Oferta pública que no existe                                                          | OK                              | [ ]          |
+| [S08](#caso-s08)   | Verificar email con un enlace inválido                                                | OK                              | [ ]          |
+| [S09](#caso-s09)   | Restablecer contraseña con un enlace inválido                                         | OK                              | [ ]          |
+| [R01](#caso-r01)   | Crear cuenta: formulario vacío y validaciones                                         | OK                              | [ ]          |
+| [R02](#caso-r02)   | Crear cuenta: la contraseña no puede ser el email                                     | OK                              | [ ]          |
+| [R03](#caso-r03)   | Crear cuenta: Ana se registra                                                         | OK                              | [ ]          |
+| [R04](#caso-r04)   | Crear cuenta con un email que ya existe                                               | OK                              | [ ]          |
+| [V01](#caso-v01)   | Reenviar el correo de verificación                                                    | OK                              | [ ]          |
+| [V02](#caso-v02)   | El correo «Verifica tu email en LinkVault» llega a Mailpit                            | OK                              | [ ]          |
+| [V03](#caso-v03)   | Abrir el enlace: «Email verificado»                                                   | OK                              | [ ]          |
+| [V04](#caso-v04)   | Abrir otra vez el mismo enlace (ya usado)                                             | OK                              | [ ]          |
+| [L01](#caso-l01)   | Cerrar sesión                                                                         | OK                              | [ ]          |
+| [L02](#caso-l02)   | Recuperar contraseña: validación, email inexistente y email real                      | OK                              | [ ]          |
+| [L03](#caso-l03)   | Restablecer la contraseña con el enlace del correo                                    | OK                              | [ ]          |
+| [L04](#caso-l04)   | La contraseña vieja ya no entra y la nueva sí; la sesión sobrevive a recargar         | OK                              | [ ]          |
+| [F01](#caso-f01)   | Perfil inicial                                                                        | OK                              | [ ]          |
+| [F02](#caso-f02)   | Nombre: validación y guardado                                                         | OK                              | [ ]          |
+| [F03](#caso-f03)   | Contraseña: actual incorrecta, nueva demasiado corta y cambio correcto                | OK                              | [ ]          |
+| [F04](#caso-f04)   | IA y privacidad por defecto                                                           | OK                              | [ ]          |
+| [G01](#caso-g01)   | Tus grupos, sin ningún grupo                                                          | OK                              | [ ]          |
+| [G02](#caso-g02)   | Crear un grupo: validación y alta                                                     | OK                              | [ ]          |
+| [G03](#caso-g03)   | Renombrar el grupo                                                                    | OK                              | [ ]          |
+| [G04](#caso-g04)   | Ajuste: los links nuevos se comparten con un enlace público                           | OK                              | [ ]          |
+| [G05](#caso-g05)   | Copiar la invitación                                                                  | OK                              | [ ]          |
+| [I01](#caso-i01)   | Beto abre la invitación sin sesión y se registra                                      | OK                              | [ ]          |
+| [I02](#caso-i02)   | Beto pulsa «Unirme» y entra como miembro                                              | OK                              | [ ]          |
+| [I03](#caso-i03)   | Ana ve a Beto entre los miembros                                                      | OK                              | [ ]          |
+| [I04](#caso-i04)   | Unirse con un código inválido y con el campo vacío                                    | OK                              | [ ]          |
+| [K01](#caso-k01)   | Guardar una oferta en el grupo, con una nota                                          | OK                              | [ ]          |
+| [K02](#caso-k02)   | Guardar la misma URL otra vez                                                         | OK                              | [ ]          |
+| [K03](#caso-k03)   | URL inválida y nota demasiado larga                                                   | OK                              | [ ]          |
+| [K04](#caso-k04)   | La oferta que no se puede leer: «No pudimos leer esta oferta» y «Reintentar»          | OK                              | [ ]          |
+| [K05](#caso-k05)   | Completar la oferta a mano                                                            | OK                              | [ ]          |
+| [K06](#caso-k06)   | Pegar la descripción: texto que no es una oferta y texto de una oferta                | OK                              | [ ]          |
+| [K07](#caso-k07)   | Deshacer lo pegado                                                                    | OK                              | [ ]          |
+| [K08](#caso-k08)   | Importar un chat                                                                      | OK                              | [ ]          |
+| [K09](#caso-k09)   | Editar una oferta pegada y «Volver a lo anterior»                                     | OK                              | [ ]          |
+| [K10](#caso-k10)   | Quitar una oferta del grupo                                                           | OK                              | [ ]          |
+| [A01](#caso-a01)   | Tablero vacío (persona sin postulaciones)                                             | OK                              | [ ]          |
+| [A02](#caso-a02)   | Insights sin postulaciones                                                            | OK                              | [ ]          |
+| [A03](#caso-a03)   | «Postulé»: ¿cuándo postulaste?, fecha futura y «Hoy»                                  | OK                              | [ ]          |
+| [A04](#caso-a04)   | Compartir el estado con el grupo: «Qué verán», «Compartir», «Deshacer»                | OK                              | [ ]          |
+| [A05](#caso-a05)   | «Me interesa» en otra oferta y el aviso se cierra al navegar                          | OK                              | [ ]          |
+| [A06](#caso-a06)   | Tablero con columnas                                                                  | OK                              | [ ]          |
+| [A07](#caso-a07)   | Detalle: mover a «En proceso» con etapa, nota y compartir                             | OK                              | [ ]          |
+| [A08](#caso-a08)   | Cerrar una postulación: «¿Cómo se cerró?»                                             | OK                              | [ ]          |
+| [A09](#caso-a09)   | Insights con postulaciones                                                            | OK                              | [ ]          |
+| [A10](#caso-a10)   | Dejar de seguir                                                                       | OK                              | [ ]          |
+| [C01](#caso-c01)   | Mi CV vacío                                                                           | OK                              | [ ]          |
+| [C02](#caso-c02)   | Archivos que no se aceptan: tipo y tamaño                                             | OK                              | [ ]          |
+| [C03](#caso-c03)   | Subir el CV en PDF: «Estamos leyendo tu CV…» y «Listo»                                | OK                              | [ ]          |
+| [C04](#caso-c04)   | «Ver lo que leímos»                                                                   | OK                              | [ ]          |
+| [C05](#caso-c05)   | Un CV sin texto (escaneo) y «Usar el que sí se leyó»                                  | OK                              | [ ]          |
+| [C06](#caso-c06)   | Eliminar un CV                                                                        | OK                              | [ ]          |
+| [M01](#caso-m01)   | Sin CV: «Necesitas un CV guardado»                                                    | Corregido (pendiente de pasada) | [ ]          |
+| [M02](#caso-m02)   | Analizar mi encaje: informe del fixture de replay                                     | OK                              | [ ]          |
+| [M03](#caso-m03)   | Sugerencia: «Copiar» y «No me convence»                                               | OK                              | [ ]          |
+| [M04](#caso-m04)   | El tablero muestra el badge de encaje                                                 | OK                              | [ ]          |
+| [M05](#caso-m05)   | Plan de estudio: un análisis que no existe                                            | OK                              | [ ]          |
+| [N01](#caso-n01)   | Beto ve la oferta con el estado compartido de Ana                                     | OK                              | [ ]          |
+| [N02](#caso-n02)   | Comentar: validación y publicación                                                    | OK                              | [ ]          |
+| [N03](#caso-n03)   | «Conozco a alguien ahí»                                                               | OK                              | [ ]          |
+| [N04](#caso-n04)   | Ana ve el comentario y el conteo en vivo, y borra el comentario ajeno                 | OK                              | [ ]          |
+| [N05](#caso-n05)   | Quitar la nota propia                                                                 | OK                              | [ ]          |
+| [N06](#caso-n06)   | Fijar, etiquetar y filtrar                                                            | OK                              | [ ]          |
+| [E01](#caso-e01)   | Copiar el enlace público de una tarjeta                                               | OK                              | [ ]          |
+| [E02](#caso-e02)   | Carla abre el enlace sin sesión                                                       | OK                              | [ ]          |
+| [E03](#caso-e03)   | Guardar desde el enlace público: registro y «Solo para mí»                            | OK                              | [ ]          |
+| [E04](#caso-e04)   | Dejar de compartir                                                                    | OK                              | [ ]          |
+| [E05](#caso-e05)   | Volver a compartir con un enlace público                                              | OK                              | [ ]          |
+| [P01](#caso-p01)   | Guardar una oferta en la lista privada                                                | OK                              | [ ]          |
+| [P02](#caso-p02)   | «Me interesa» y «Quitar»                                                              | OK                              | [ ]          |
+| [P03](#caso-p03)   | Oferta ya guardada en un grupo propio                                                 | OK                              | [ ]          |
+| [P04](#caso-p04)   | Oferta cerrada y «Reabrir»                                                            | OK                              | [ ]          |
+| [P05](#caso-p05)   | Pegar un chat en «Solo para mí»                                                       | OK                              | [ ]          |
+| [D01](#caso-d01)   | Descubrir vacantes (función apagada en la pila)                                       | OK                              | [ ]          |
+| [D02](#caso-d02)   | Buscar (función apagada en la pila)                                                   | OK                              | [ ]          |
+| [T01](#caso-t01)   | Preferencias de aviso: guardar y comprobar que persisten                              | OK                              | [ ]          |
+| [T02](#caso-t02)   | Grupo para avisos de estado                                                           | OK                              | [ ]          |
+| [T03](#caso-t03)   | Push del navegador (sin claves VAPID)                                                 | OK                              | [ ]          |
+| [T04](#caso-t04)   | Avisos por email en Mailpit                                                           | OK                              | [ ]          |
+| [B01](#caso-b01)   | Conceder y retirar el permiso de IA externa                                           | OK                              | [ ]          |
+| [B02](#caso-b02)   | Idioma de los análisis y ocultar el nombre                                            | OK                              | [ ]          |
+| [B03](#caso-b03)   | Clave propia (BYOK): validación y guardado sin bóveda                                 | OK                              | [ ]          |
+| [X01](#caso-x01)   | Beto se une con un código desde «Unirse con un código»                                | OK                              | [ ]          |
+| [X02](#caso-x02)   | El propietario no puede salir sin ceder la propiedad                                  | OK                              | [ ]          |
+| [X03](#caso-x03)   | Expulsar y regenerar el código                                                        | OK                              | [ ]          |
+| [X04](#caso-x04)   | El código anterior ya no sirve                                                        | OK                              | [ ]          |
+| [X05](#caso-x05)   | Regenerar el código a mano                                                            | OK                              | [ ]          |
+| [X06](#caso-x06)   | Ceder la propiedad y salir                                                            | OK                              | [ ]          |
+| [X07](#caso-x07)   | Borrar el grupo                                                                       | OK                              | [ ]          |
+| [X08](#caso-x08)   | Un grupo que no existe                                                                | OK                              | [ ]          |
+| [V01m](#caso-v01m) | Móvil: aviso de privacidad e inicio de sesión                                         | OK                              | [ ]          |
+| [V02m](#caso-v02m) | Móvil: /grupos                                                                        | OK                              | [ ]          |
+| [V03m](#caso-v03m) | Móvil: /grupos/6b0685dc439d6452ee3dfc78                                               | OK                              | [ ]          |
+| [V04m](#caso-v04m) | Móvil: /postulaciones                                                                 | OK                              | [ ]          |
+| [V05m](#caso-v05m) | Móvil: /mi-cv                                                                         | OK                              | [ ]          |
+| [V06m](#caso-v06m) | Móvil: /perfil                                                                        | OK                              | [ ]          |
+| [V07m](#caso-v07m) | Móvil: /notificaciones                                                                | OK                              | [ ]          |
+| [V08m](#caso-v08m) | Móvil: /mis-links                                                                     | OK                              | [ ]          |
+| [V09m](#caso-v09m) | Móvil: /buscar                                                                        | OK                              | [ ]          |
+| [V10m](#caso-v10m) | Móvil: /descubrir                                                                     | OK                              | [ ]          |
+| [V11m](#caso-v11m) | Móvil: el informe de encaje en pantalla completa                                      | OK                              | [ ]          |
+| [V12m](#caso-v12m) | Móvil: comentarios en pantalla completa                                               | OK                              | [ ]          |
+| [W01](#caso-w01)   | Interfaz en inglés (build `--localize=en`): sin sesión                                | OK                              | [ ]          |
+| [W02](#caso-w02)   | Inglés: grupos                                                                        | OK                              | [ ]          |
+| [W03](#caso-w03)   | Inglés: detalle del grupo                                                             | OK                              | [ ]          |
+| [W04](#caso-w04)   | Inglés: postulaciones                                                                 | OK                              | [ ]          |
+| [W05](#caso-w05)   | Inglés: mi-cv                                                                         | OK                              | [ ]          |
+| [W06](#caso-w06)   | Inglés: perfil                                                                        | OK                              | [ ]          |
+| [W07](#caso-w07)   | Inglés: notificaciones                                                                | OK                              | [ ]          |
+| [W08](#caso-w08)   | Inglés: mis-links                                                                     | OK                              | [ ]          |
+| [W09](#caso-w09)   | Inglés: informe de encaje                                                             | OK                              | [ ]          |
+| [W10](#caso-w10)   | Modo oscuro: la aplicación no lo soporta                                              | OK                              | [ ]          |
+| [Z01](#caso-z01)   | Diego se registra y crea un grupo con Beto dentro                                     | OK                              | [ ]          |
+| [Z02](#caso-z02)   | No se puede borrar la cuenta siendo el único propietario de un grupo con más miembros | OK                              | [ ]          |
+| [Z03](#caso-z03)   | Ceder el grupo y borrar la cuenta                                                     | OK                              | [ ]          |
 
-**Resumen:** 123 casos, 122 OK, 1 FALLO (M01).
+**Resumen:** 123 casos, 122 OK, 1 FALLO (M01); M01 corregido por `usage-guide-fixes-2` y pendiente de comprobar en la próxima pasada.
 
 ## Entorno local paso a paso
 
@@ -1131,7 +1131,7 @@ Las rutas siguen en español (`/en/grupos`, `/en/perfil`…); solo cambian los t
 - **Se escribe y se pulsa:** Beto (sin CV) abre «Analizar mi encaje» y pulsa «Analizar».
 - **Esperado:** «Necesitas un CV guardado…» (catálogo, paso 31).
 - **Visto:** Esperado «Necesitas un CV guardado…» (catálogo, paso 31); la API responde 409 no_cv y el diálogo dice «No pudimos analizar ahora.» con «Reintentar» (ver Hallazgos)
-- **Resultado:** **FALLO** (hallazgo H1, ver [Hallazgos](#hallazgos))
+- **Resultado:** **Corregido (pendiente de pasada)** por `usage-guide-fixes-2` (hallazgo H1); lo «Visto» es de la corrida del 2026-11-25
 - **Prueba automatizada:** unit: `features/match/match.dialog.spec.ts`
 
 ![encaje sin cv](img/113-encaje-sin-cv.png)
@@ -2045,14 +2045,13 @@ Lo que no funciona como dice la spec o el catálogo, o se vio mal. **No se corri
 
 **Producto e interfaz**
 
-- **H1. «Analizar mi encaje» sin CV no dice que falta el CV.** Caso [M01](#caso-m01). Ruta: `/grupos/:id` → «Analizar mi encaje» con una cuenta sin CV (Beto). El diálogo abre con «Ningún CV marcado» y el botón «Analizar» activo; al pulsarlo, la API responde `409 {"code":"no_cv","message":"Upload a CV before analysing a job"}` y el diálogo dice «No pudimos analizar ahora.» con «Reintentar». El catálogo (paso 31) promete «Necesitas un CV guardado…» y el diálogo tiene ese estado (`match-no-cv`, con «Subir CV»), pero no se llega a él. Evidencia: `encaje-sin-cv` y `encaje-sin-cv-analizar`.
-- **H2. Tras verificar el email, el aviso de la barra puede seguir hasta recargar (intermitente).** Caso [V03](#caso-v03). Ruta: con sesión abierta, abrir en la misma pestaña el enlace `/verificar-email?token=…` → «Email verificado» → «Ir a la aplicación». En 2 de las 6 corridas completas de esta pasada, `/grupos` siguió mostrando «Tu email aún no está verificado…» hasta recargar; en las otras 4 desapareció. Causa probable (sin tocar código): `VerifyEmailPage` solo vuelve a pedir el perfil si ya hay sesión **cuando termina la verificación**; con una recarga completa, la restauración de la sesión y la verificación corren en paralelo y el perfil guardado puede ser anterior. La corrida final salió bien, así que no hay captura del estado malo; el script la toma sola (`grupos-aviso-persiste-tras-verificar`) si ocurre.
-- **H3. Cambiar la contraseña: los mensajes de error se superponen y uno queda viejo.** Caso [F03](#caso-f03), captura `perfil-contrasena-nueva-corta`. Tras un intento con la contraseña actual equivocada («La contraseña actual no es correcta») y otro con la nueva demasiado corta, la pantalla muestra a la vez el aviso viejo y el nuevo, con los textos montados uno sobre otro.
 - **H4. Pegar un texto que no es una oferta da un error genérico (solo en `replay`).** Caso [K06](#caso-k06). Con `AI_MOCK_MODE=replay` un texto sin fixture lanza `FixtureMissing` y el diálogo dice «Algo salió mal. Inténtalo de nuevo» en vez de «Eso no parece una oferta de trabajo…» (que sí existe en el código). Es una limitación del mock, no del producto: con `synth` o con IA real, el mensaje depende de la respuesta. Se deja anotado porque el mensaje correcto no se puede ver con esta pila.
 - **H5. Guardar una clave de IA sin bóveda da un error genérico.** Caso [B03](#caso-b03). Con `AI_VAULT_KEY` vacía la API responde 503 y el perfil dice «Algo salió mal. Inténtalo de nuevo» en vez de decir que las claves propias no están disponibles. Ya era el H3 de septiembre; el change `usage-guide-fixes` lo difirió (en producción `AI_VAULT_KEY` es obligatoria).
 - **H6. No hay modo oscuro.** Caso [W10](#caso-w10). Con `prefers-color-scheme: dark` la interfaz sigue clara (`color-scheme: light` fijo en `apps/web/src/styles.scss`, tema Material solo claro). Ninguna spec lo promete; se anota para quien espere el modo oscuro.
 - **H7. Los campos de fecha salen como `mm/dd/yyyy`.** Caso [K05](#caso-k05), captura `corregir-oferta-relleno`: «Publicada el» y «Cierra el» muestran el orden de mes y día estadounidense en una interfaz en español. Visto en Chromium sin interfaz con `locale es-ES`; puede depender del sistema. Era el H7 de septiembre, diferido por `usage-guide-fixes`.
 - **H8. La interfaz en inglés no se puede levantar con los targets del proyecto.** `apps/web/project.json` define el locale `en` pero no hay target que lo construya ni lo sirva (ADR-050 lo deja pendiente; el catálogo ya lo anota). Para esta guía se construyó con `--localize=en` y se sirvió con `tools/guia-de-uso/serve-en.mts`. Las rutas siguen en español en el build en inglés.
+
+**Corregido por `usage-guide-fixes-2`, pendiente de comprobar en la próxima pasada: M01, V03 y F03** (los hallazgos H1, H2 y H3 de esta corrida). Lo «Visto» de esos casos es lo que mostró la corrida del 2026-11-25; los arreglos los cubren tests de componente (`match.dialog.spec.ts`, `verify-email.page.spec.ts`, `profile.page.spec.ts`), y el de V03 es la prueba de H2, porque en la guía el caso es intermitente.
 
 **Corregido desde septiembre** (comprobado en esta pasada): el nombre de quien escribió una oferta ya no llega a quien la guarda desde el enlace público (`E03`: «Escrito por otra persona»), el texto de ayuda de «Grupo para avisos de estado» ya no se monta sobre «Preferencias guardadas» (`T01`), el aviso «Compartido · Deshacer» se cierra al navegar (`A05`) y el campo de URL ya no queda en rojo tras guardar (`K01`).
 
@@ -2072,4 +2071,4 @@ La guía de septiembre (2026-09-28, sobre `0f307c6e`) tenía 30 pasos y 100 capt
 - **Se agregaron tandas completas:** móvil (Pixel 7) en 12 pantallas, inglés en 9, y la comprobación del modo oscuro.
 - **Se agregó** la lista de comprobación, el entorno paso a paso (pila aislada y forma de desarrollo del README) y el script de capturas reproducible (`tools/guia-de-uso/`).
 - **Se quitó** el paso 15 «Plan de estudio» como sin captura: sigue sin ser alcanzable con `replay`, y ahora está en «Lo que no se pudo probar», con la pantalla del análisis inexistente (`M05`).
-- **Se cerraron** los hallazgos H1, H2, H4, H5 y H6 de septiembre (los corrigió `usage-guide-fixes`); siguen H3 (ahora H5) y H7 (ahora H7), y hay hallazgos nuevos (H1, H2, H3, H6 de esta guía).
+- **Se cerraron** los hallazgos H1, H2, H4, H5 y H6 de septiembre (los corrigió `usage-guide-fixes`); siguen H3 (ahora H5) y H7 (ahora H7), y hay hallazgos nuevos: H1, H2 y H3 de esta guía, ya corregidos por `usage-guide-fixes-2` y pendientes de comprobar en la próxima pasada, y H6.

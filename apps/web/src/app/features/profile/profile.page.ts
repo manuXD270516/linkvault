@@ -286,13 +286,14 @@ export class ProfilePage {
   }
 
   protected async changePassword(): Promise<void> {
+    // Cada envío borra el resultado del anterior, también el que el propio SPA rechaza: un aviso viejo ya no es verdad.
+    this.passwordChanged.set(false);
+    this.passwordFailure.set(null);
     if (this.passwordForm.invalid) {
       this.passwordForm.markAllAsTouched();
       return;
     }
     this.passwordSaving.set(true);
-    this.passwordChanged.set(false);
-    this.passwordFailure.set(null);
     try {
       await this.authApi.changePassword(
         changePasswordRequestSchema.parse(this.passwordForm.getRawValue()),

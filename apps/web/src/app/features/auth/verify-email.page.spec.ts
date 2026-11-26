@@ -12,6 +12,7 @@ import {
   testUser,
   verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
+import { SessionRestore } from '../../core/auth/session-restore';
 import { SessionStore } from '../../core/auth/session.store';
 import { Shell } from '../../layout/shell/shell';
 import { VerifyEmailPage } from './verify-email.page';
@@ -107,6 +108,114 @@ describe('VerifyEmailPage', () => {
     await vi.waitFor(() => expect(statusText()).toBe('Email verificado'));
     expect(router.url).toBe('/verificar-email?token=token-valido');
     http.expectNone('/api/groups');
+  });
+
+  it('El perfil falla después de verificar', async () => {
+    store.setSession(sessionWith('token-1', { ...testUser, emailVerified: false }));
+    await harness.navigateByUrl('/verificar-email?token=token-valido', VerifyEmailPage);
+
+    const verify = await vi.waitFor(() => http.expectOne('/api/auth/verify-email'));
+    verify.flush(null, { status: 204, statusText: 'No Content' });
+    const profile = await vi.waitFor(() => http.expectOne('/api/users/me'));
+    const { body, options } = apiError('internal_error', 500);
+    profile.flush(body, options);
+
+    await vi.waitFor(() => expect(statusText()).toBe('Email verificado'));
+    expect(store.user()?.emailVerified).toBe(true);
+    expect(store.needsEmailVerification()).toBe(false);
+    expect(host().querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('el perfil responde 401 y el refresh falla: Email verificado, sin excepción', async () => {
+    vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    store.setSession(sessionWith('token-1', { ...testUser, emailVerified: false }));
+    await harness.navigateByUrl('/verificar-email?token=token-valido', VerifyEmailPage);
+
+    const verify = await vi.waitFor(() => http.expectOne('/api/auth/verify-email'));
+    verify.flush(null, { status: 204, statusText: 'No Content' });
+    const profile = await vi.waitFor(() => http.expectOne('/api/users/me'));
+    const unauthorized = apiError('unauthorized', 401);
+    profile.flush(unauthorized.body, unauthorized.options);
+    const refresh = await vi.waitFor(() => http.expectOne('/api/auth/refresh'));
+    const expired = apiError('unauthorized', 401);
+    refresh.flush(expired.body, expired.options);
+
+    await vi.waitFor(() => expect(statusText()).toBe('Email verificado'));
+    expect(store.user()).toBeNull();
+    expect(host().querySelector('[role="alert"]')).toBeNull();
+  });
+
+  describe('mientras la sesión se restaura', () => {
+    let finishRestore: () => void;
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      const restoring = new Promise<void>((resolve) => {
+        finishRestore = resolve;
+      });
+      TestBed.configureTestingModule({
+        providers: [
+          ...providePageTesting(),
+          { provide: SessionRestore, useValue: { restore: () => restoring } },
+        ],
+      });
+      http = TestBed.inject(HttpTestingController);
+      router = TestBed.inject(Router);
+      store = TestBed.inject(SessionStore);
+      harness = await RouterTestingHarness.create();
+    });
+
+    it('La verificación responde antes que la restauración de la sesión', async () => {
+      expect(store.status()).toBe('unknown');
+      await harness.navigateByUrl('/verificar-email?token=token-valido', VerifyEmailPage);
+
+      const verify = await vi.waitFor(() => http.expectOne('/api/auth/verify-email'));
+      verify.flush(null, { status: 204, statusText: 'No Content' });
+      await settle();
+      http.expectNone('/api/users/me');
+
+      store.setSession(sessionWith('token-1', { ...testUser, emailVerified: false }));
+      finishRestore();
+
+      const profile = await vi.waitFor(() => http.expectOne('/api/users/me'));
+      profile.flush({ ...testUser, emailVerified: true });
+
+      await vi.waitFor(() => expect(statusText()).toBe('Email verificado'));
+      expect(store.needsEmailVerification()).toBe(false);
+      expect(host().textContent).toContain('Ir a la aplicación');
+    });
+
+    it('Sin sesión tras la restauración: ir a iniciar sesión y sin pedir el perfil', async () => {
+      await harness.navigateByUrl('/verificar-email?token=token-valido', VerifyEmailPage);
+
+      const verify = await vi.waitFor(() => http.expectOne('/api/auth/verify-email'));
+      verify.flush(null, { status: 204, statusText: 'No Content' });
+      store.clear();
+      finishRestore();
+
+      await vi.waitFor(() => expect(statusText()).toBe('Email verificado'));
+      expect(host().querySelector('a[href="/login"]')).not.toBeNull();
+      http.expectNone('/api/users/me');
+    });
+
+    it('Enlace inválido mientras se restaura la sesión', async () => {
+      await harness.navigateByUrl('/verificar-email?token=basura', VerifyEmailPage);
+
+      const { body, options } = apiError('invalid_token', 400);
+      const verify = await vi.waitFor(() => http.expectOne('/api/auth/verify-email'));
+      verify.flush(body, options);
+      await settle();
+      harness.fixture.detectChanges();
+
+      expect(host().textContent).toContain('Comprobando el enlace');
+      expect(host().textContent).not.toContain('Inicia sesión y usa el aviso');
+
+      store.setSession(sessionWith('token-1', { ...testUser, emailVerified: false }));
+      finishRestore();
+
+      await vi.waitFor(() => expect(alertText()).toContain('no es válido o ha caducado'));
+      expect(host().textContent).not.toContain('Inicia sesión y usa el aviso');
+    });
   });
 
   it('Banner tras el registro', async () => {
