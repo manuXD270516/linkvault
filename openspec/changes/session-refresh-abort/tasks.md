@@ -23,7 +23,7 @@ concurrencia (H3).
 ## 1. API (design D2–D7)
 
   Estado (2026-11-25): fila 42 candidata, 0 apariciones en `openspec-changes.yaml`, ADR-072 existe y ADR-020 lleva su anotación; validate (change y --all) y repo-checks en verde.
-- [ ] 1.1 [backend] Política de dominio. **Primero el test** en `domain/refresh-session.spec.ts`: «reissues a token
+- [x] 1.1 [backend] Política de dominio. **Primero el test** en `domain/refresh-session.spec.ts`: «reissues a token
   rotated 2 seconds ago whose successor was never used» (en `main` devuelve `conflict`: rojo esperado), «returns
   conflict for a token rotated 2 seconds ago whose successor was used», «returns conflict after 3 reissues», «returns
   conflict for a token rotated before reissue existed» (`reissueCount` nulo), «keeps the window anchored to the first
@@ -33,7 +33,8 @@ concurrencia (H3).
   `reissue` (con `now` y `successorExpiresAt`) en `decide`. Verificar: `pnpm nx run api:test` del fichero en verde; el
   test viejo «returns conflict for a token rotated 2 seconds ago» pasa a declarar `advanced: true`. Falsación: con `<=`
   en lugar de `<` en el tope, «returns conflict after 3 reissues» falla; restaurar.
-- [ ] 1.2 [backend] Depende de 1.1. Esquema y puerto. **Primero el test** en
+  Estado (2026-11-25): rojo en `main`: 3 tests fallaban («reissues a token rotated 2 seconds ago…», «returns conflict after 3 reissues», «keeps the window anchored…»); verde 26/26; falsación con `<=` en el tope: falla «returns conflict after 3 reissues», restaurado.
+- [x] 1.2 [backend] Depende de 1.1. Esquema y puerto. **Primero el test** en
   `infrastructure/mongo-session.repository.spec.ts`: «reads a legacy refresh token without the new fields as not
   advanced with a null reissue count» (documento crudo sin `parentHash`, `advancedAt` ni `reissueCount`) y «a new
   rotation stores reissueCount 0 on the rotated token». Después: los tres campos opcionales en `RefreshTokenDocument` y
@@ -41,7 +42,8 @@ concurrencia (H3).
   `{ parentHash: 1 }`, `StoredRefreshToken` con los campos y `RotationResult` `rotated` con `reissued` y
   `reissueCount`. Verificar: `api:test` del fichero y `api:typecheck` en verde; «Refresh token no guardado en claro»
   sigue en verde. Falsación: con `default: 0` en el esquema, el primer test falla; restaurar.
-- [ ] 1.3 [backend] Depende de 1.2. Reemisión en `MongoSessionRepository.rotate`. **Primero el test** en
+  Estado (2026-11-25): rojo: 4 tests (índice `parentHash`, apertura, token legado, rotación con `reissueCount` 0); verde 11/11 y `api:typecheck` en verde. Falsación con `default: 0`: fallan «opens a session…» y «a new rotation stores reissueCount 0…»; el test del token legado NO falla porque el insert crudo no pasa por los defaults de Mongoose (la lectura con `lean` ya lo cubre). Restaurado.
+- [x] 1.3 [backend] Depende de 1.2. Reemisión en `MongoSessionRepository.rotate`. **Primero el test** en
   `infrastructure/mongo-session.repository.rotation.spec.ts` (replset del preset): «Respuesta de rotación perdida»
   (rota R1, descarta el sucesor, avanza 2 s, rota R1 otra vez: en `main` da `conflict`, rojo esperado; tras el arreglo
   `rotated` con `reissued: true`, un tercer token con `parentHash` = hash de R1, `rotatedAt` de R1 sin cambios y sesión
@@ -51,14 +53,16 @@ concurrencia (H3).
   `reissueCount` existente y menor que el tope, `$inc`), recomprueba la sesión e inserta el hermano. Verificar: el
   fichero en verde. Falsación: sin `$exists: true` en el filtro, «Token rotado antes de la reemisión» da `rotated`;
   restaurar.
-- [ ] 1.4 [backend] Depende de 1.3. Supersesión de hermanos (D3). **Primero el test** en el mismo fichero: «El hermano
+  Estado (2026-11-25): rojo en `main`: «Respuesta de rotación perdida» y «Tope de reemisiones» (los otros dos escenarios ya daban el resultado correcto en `main`); verde con la rama `reissue`. Falsación: quitar `$exists: true` NO hace fallar «Token rotado antes de la reemisión»: en Mongo `$lt` no casa con un campo ausente y la política ya devuelve `conflict` con contador `null`; el `$exists` queda como defensa redundante, tal como pide el design.
+- [x] 1.4 [backend] Depende de 1.3. Supersesión de hermanos (D3). **Primero el test** en el mismo fichero: «El hermano
   usado deja superados a los demás» (R1→R2, reemisión R3, rota R3; R2 a +1 s da `conflict` y a +11 s `reused` con la
   sesión revocada) y «Refresh concurrente» actualizado (R2 ya rotado: R1 da `conflict`, R3 rota). Después: en la rama
   `rotate`, si el token presentado tiene `parentHash`, `$set: { advancedAt: now }` sobre el padre y `updateMany` de
   hermanos sin rotar a `rotatedAt` y `advancedAt` = `now`. Verificar: el fichero en verde y «returns conflict inside the
   window even after the successor was used» sin cambios. Falsación: sin el `updateMany`, R2 da `rotated` en vez de
   `conflict`; restaurar.
-- [ ] 1.5 [backend] Depende de 1.4. Invariante de D3, orden «reemisión confirma primero» (H3). Punto de pausa inyectable
+  Estado (2026-11-25): rojo: «El hermano usado deja superados a los demás» y «Refresh concurrente» actualizado; verde con el `$set` en el padre y el `updateMany`; «returns conflict inside the window even after the successor was used» sin cambios. Falsación sin el `updateMany`: falla «El hermano usado…»; restaurado.
+- [x] 1.5 [backend] Depende de 1.4. Invariante de D3, orden «reemisión confirma primero» (H3). Punto de pausa inyectable
   **solo para tests** en `MongoSessionRepository` (parámetro opcional del constructor, por ejemplo
   `rotationProbe?: { afterRead(kind: 'rotate' | 'reissue'): Promise<void> }`, ausente en `auth.module.ts`). **Primero
   el test** «reissue commits first, then a sibling rotation supersedes the new sibling»: R1→R2 (sin usar), arranca la
@@ -66,12 +70,14 @@ concurrencia (H3).
   Exige: R2 `rotated`, R3 superado (`conflict` a +1 s) y una sola hoja utilizable (el hijo de R2). Verificar: en verde 3
   corridas seguidas; `grep -n "rotationProbe" apps/api/src/modules/auth/presentation/auth.module.ts` sin resultados.
   Falsación: quitar el `$set` sobre el padre hace que R3 quede utilizable; restaurar.
-- [ ] 1.6 [backend] Depende de 1.5. Orden inverso y carrera complementaria. **Primero los tests**: «sibling rotation
+  Estado (2026-11-25): test en `mongo-session.repository.interleaving.spec.ts`; rojo: sin la sonda la pausa nunca se alcanza (2 tests agotan el tiempo); verde en 3 corridas seguidas; `rotationProbe` no aparece en `auth.module.ts`. Falsación sin el `$set` sobre el padre: fallan los 3 tests del fichero; restaurado.
+- [x] 1.6 [backend] Depende de 1.5. Orden inverso y carrera complementaria. **Primero los tests**: «sibling rotation
   commits first, then the reissue gets conflict» (pausa la reemisión de R1 tras la lectura, confirma la rotación de R2,
   suelta: R1 `conflict`, sin hermano nuevo), «Tres refresh concurrentes con el mismo token» actualizado (tres
   `rotated`, tres hijos distintos, sesión no revocada; tras rotar uno, los otros dos dan `conflict`) y «Reemisión y uso
   de un hermano a la vez» repetido 20 veces con `Promise.all` como complemento. Verificar: en verde 3 corridas seguidas.
   Falsación: quitar `advancedAt: null` del filtro de la reemisión hace fallar el primero; restaurar.
+  Estado (2026-11-25): «sibling rotation commits first, then the reissue gets conflict», «Tres refresh concurrentes…» y «two concurrent rotations…» actualizados (rojo previo a 1.3/1.4: devolvían `conflict`), carrera de 20 repeticiones con `Promise.all` como complemento; verde en 3 corridas seguidas (31/31 de los ficheros de repositorio). Falsación sin `advancedAt: null` en el filtro de la reemisión: NO hace fallar el test: al confirmar la rotación primero, la reemisión pausada recibe `WriteConflict` sobre el padre, `withTransaction` la reintenta y la política ya ve `advanced` y devuelve `conflict`; el filtro es la segunda barrera.
 - [ ] 1.7 [backend] Depende de 1.2. Doble en memoria, caso de uso y aviso (D7, H7). **Primero el test** en
   `application/refresh-session.usecase.spec.ts`: «Respuesta de rotación perdida» (rota, descarta, avanza 2 s, vuelve
   a refrescar con el token viejo: en `main` lanza `RefreshConflict`, rojo esperado) y «reports a reissue with userId,

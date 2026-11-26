@@ -264,6 +264,9 @@ export class InMemorySessionRepository implements SessionRepository {
       expiresAt: window.refreshExpiresAt,
       rotatedAt: null,
       replacedByHash: null,
+      parentHash: null,
+      advancedAt: null,
+      reissueCount: null,
     });
     return Promise.resolve({
       sessionId,
@@ -342,7 +345,10 @@ export class InMemorySessionRepository implements SessionRepository {
       return Promise.resolve({ outcome: 'invalid', reason: 'unknown_token' });
     }
     const identity = { sessionId: token.sessionId, userId: token.userId };
-    const decision = this.policy.decide(token, session);
+    const decision = this.policy.decide(
+      { ...token, advanced: token.advancedAt !== null },
+      session,
+    );
     switch (decision.outcome) {
       case 'invalid':
         return Promise.resolve(decision);
@@ -353,6 +359,9 @@ export class InMemorySessionRepository implements SessionRepository {
           session.revokedAt = this.clock.now();
         }
         return Promise.resolve({ outcome: 'reused', ...identity });
+      case 'reissue':
+        // La reemisión del doble llega con la tarea 1.7; hasta entonces actúa como una API sin reemisión.
+        return Promise.resolve({ outcome: 'conflict', ...identity });
       case 'rotate':
         token.rotatedAt = decision.now;
         token.replacedByHash = successorHash;
@@ -363,11 +372,16 @@ export class InMemorySessionRepository implements SessionRepository {
           expiresAt: decision.successorExpiresAt,
           rotatedAt: null,
           replacedByHash: null,
+          parentHash: tokenHash,
+          advancedAt: null,
+          reissueCount: null,
         });
         return Promise.resolve({
           outcome: 'rotated',
           ...identity,
           refreshExpiresAt: decision.successorExpiresAt,
+          reissued: false,
+          reissueCount: 0,
         });
     }
   }

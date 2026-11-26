@@ -77,6 +77,12 @@ describe('MongoSessionRepository (sessions)', () => {
     expect(tokenIndexes).toContainEqual(
       expect.objectContaining({ key: { expiresAt: 1 }, expireAfterSeconds: 0 }),
     );
+    expect(tokenIndexes).toContainEqual(
+      expect.objectContaining({ key: { parentHash: 1 } }),
+    );
+    expect(tokenIndexes).not.toContainEqual(
+      expect.objectContaining({ key: { parentHash: 1 }, unique: true }),
+    );
     expect(sessionIndexes).toContainEqual(
       expect.objectContaining({ key: { expiresAt: 1 }, expireAfterSeconds: 0 }),
     );
@@ -119,6 +125,59 @@ describe('MongoSessionRepository (sessions)', () => {
       expiresAt: new Date(NOW.getTime() + 30 * DAY),
       rotatedAt: null,
       replacedByHash: null,
+      parentHash: null,
+      advancedAt: null,
+      reissueCount: null,
+    });
+  });
+
+  it('reads a legacy refresh token without the new fields as not advanced with a null reissue count', async () => {
+    const opened = await repository.open(
+      'user-legacy',
+      generateRefreshToken().tokenHash,
+    );
+    const legacyHash = generateRefreshToken().tokenHash;
+    await connection.collection(REFRESH_TOKENS_COLLECTION).insertOne({
+      tokenHash: legacyHash,
+      sessionId: opened.sessionId,
+      userId: 'user-legacy',
+      createdAt: NOW,
+      expiresAt: new Date(NOW.getTime() + 30 * DAY),
+      rotatedAt: NOW,
+      replacedByHash: generateRefreshToken().tokenHash,
+    });
+
+    const stored = await repository.findRefreshToken(legacyHash);
+
+    expect(stored).toMatchObject({
+      parentHash: null,
+      advancedAt: null,
+      reissueCount: null,
+    });
+  });
+
+  it('a new rotation stores reissueCount 0 on the rotated token', async () => {
+    const first = generateRefreshToken();
+    const successor = generateRefreshToken();
+    await repository.open('user-count', first.tokenHash);
+
+    const result = await repository.rotate({
+      tokenHash: first.tokenHash,
+      successorHash: successor.tokenHash,
+      expectedClient: 'web',
+    });
+
+    expect(result.outcome).toBe('rotated');
+    expect(await repository.findRefreshToken(first.tokenHash)).toMatchObject({
+      reissueCount: 0,
+      advancedAt: null,
+    });
+    expect(
+      await repository.findRefreshToken(successor.tokenHash),
+    ).toMatchObject({
+      parentHash: first.tokenHash,
+      reissueCount: null,
+      rotatedAt: null,
     });
   });
 
