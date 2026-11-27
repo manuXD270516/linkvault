@@ -89,12 +89,16 @@ propósito lo que vigilan, se ve el rojo y se restaura. Sin `design.md`: no hay 
 
 ## 2. Documentación y prueba en Firefox
 
-- [ ] 2.1 [infra] **RUNBOOK.** En `docs/RUNBOOK.md` §«Build Firefox (temporary add-on)», después del paso 1, agregar
+- [x] 2.1 [infra] **RUNBOOK.** En `docs/RUNBOOK.md` §«Build Firefox (temporary add-on)», después del paso 1, agregar
   una nota: en Firefox el fondo es un *event page* (`background.scripts`), no un service worker; su consola se abre con
   «Inspeccionar» junto al complemento en `about:debugging`, y se suspende cuando queda inactivo como en Chromium. En
   §«Firefox AMO», nota: el validador online puede avisar que `service_worker` no está soportado; es esperado, porque
   el manifiesto lo declara a propósito para Chromium/futuro (MDN recomienda las dos claves). Verificar: `grep -n
   "event page" docs/RUNBOOK.md` muestra las líneas nuevas; `bash infra/ci/repo-checks.sh` verde.
+  Estado (2026-11-27): antes, `grep -c "event page" docs/RUNBOOK.md` = 0 (tarea de documentación: ese es el rojo).
+  Después, `grep -n "event page"` muestra la línea 1411 (nota del paso 1 de «Build Firefox (temporary add-on)»); la
+  nota de «Firefox AMO» sobre el aviso de `service_worker` quedó en el paso 3. `bash infra/ci/repo-checks.sh` verde
+  («5 comprobaciones de repositorio ejecutadas»).
 
 - [ ] 2.2 [infra] **Prueba manual en Firefox, a cargo del owner** (no hay Firefox en la máquina del agente). Con la
   pila local arriba (`pnpm infra:up`, `pnpm nx serve api`):
