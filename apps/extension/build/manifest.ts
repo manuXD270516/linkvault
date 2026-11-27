@@ -21,6 +21,11 @@ export function buildExtensionManifest(
   const manifest = structuredClone(template) as Record<string, unknown>;
   manifest['host_permissions'] = [hostPermissionFor(options.apiBaseUrl)];
   if (options.target === 'firefox') {
+    // Firefox MV3 has no background.service_worker (MDN manifest.json/background, bug 1573659): it starts an event page from scripts.
+    manifest['background'] = {
+      ...(manifest['background'] as Record<string, unknown>),
+      scripts: ['background.js'],
+    };
     manifest['browser_specific_settings'] = {
       gecko: {
         id: GECKO_EXTENSION_ID,

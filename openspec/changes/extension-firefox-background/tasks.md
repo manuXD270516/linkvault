@@ -42,7 +42,7 @@ propósito lo que vigilan, se ve el rojo y se restaura. Sin `design.md`: no hay 
   `scripts` en el `background` del template hizo caer «keeps chrome background as module service worker without
   scripts». Ambos restaurados (17/17).
 
-- [ ] 1.2 [frontend] **Firefox declara `background.scripts`.** Primero, en `apps/extension/build/manifest.spec.ts`,
+- [x] 1.2 [frontend] **Firefox declara `background.scripts`.** Primero, en `apps/extension/build/manifest.spec.ts`,
   agregar «buildExtensionManifest declares background scripts next to the module service worker for firefox»:
   `background` igual a `{ scripts: ["background.js"], service_worker: "background.js", type: "module" }`. Cae sobre
   1.1 porque falta `scripts`; anotar el fallo. Después, en la rama de Firefox de `buildExtensionManifest`, componer
@@ -53,6 +53,13 @@ propósito lo que vigilan, se ve el rojo y se restaura. Sin `design.md`: no hay 
   las tres claves de `background`; `pnpm nx run extension:build` produce uno sin `scripts`. Falsación: quitar
   `scripts` de la rama de Firefox hace caer el caso nuevo; mutar `template.background` en lugar de copiarlo hace caer
   «does not mutate the template» (o el de Chromium si comparten objeto). Restaurar.
+  Estado (2026-11-27): rojo previo: «declares background scripts next to the module service worker for firefox»
+  falla con «AssertionError: expected { …(2) } to deeply equal { scripts: [ 'background.js' ], …(2) }» (1 failed |
+  17 passed). Verde: 18/18; `typecheck`, `lint`, `build` y `build-firefox` verdes. El manifiesto de Firefox generado
+  trae `background` = `{ service_worker, type: "module", scripts: ["background.js"] }`; el de Chromium no contiene
+  `scripts`. Falsación: quitar `scripts` hace caer el caso nuevo; mutar el template en lugar de copiarlo (con
+  `scripts` agregado in situ) hizo caer «keeps chrome background…» (comparten objeto), no el de no mutación. Los
+  dos restaurados (18/18).
 
 - [ ] 1.3 [frontend] **El lint de Firefox exige `scripts` y cita MDN.** En
   `apps/extension/scripts/lint-firefox-manifest.mjs`:

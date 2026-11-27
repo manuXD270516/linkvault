@@ -31,6 +31,15 @@ describe('buildExtensionManifest', () => {
     expect('scripts' in background).toBe(false);
   });
 
+  it('declares background scripts next to the module service worker for firefox', () => {
+    const manifest = buildExtensionManifest(template, { apiBaseUrl, target: 'firefox' });
+    expect(manifest['background']).toEqual({
+      scripts: ['background.js'],
+      service_worker: 'background.js',
+      type: 'module',
+    });
+  });
+
   it('does not mutate the template', () => {
     const before = structuredClone(template);
     buildExtensionManifest(template, { apiBaseUrl, target: 'chrome' });
