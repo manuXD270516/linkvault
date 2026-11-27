@@ -13,7 +13,7 @@ export default mergeConfig(
       name: 'extension',
       environment: 'node',
       globals: false,
-      include: ['src/**/*.{spec,test}.ts'],
+      include: ['src/**/*.{spec,test}.ts', 'build/**/*.spec.ts'],
       watch: false,
       passWithNoTests: false,
       coverage: {

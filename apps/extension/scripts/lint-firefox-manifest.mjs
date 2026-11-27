@@ -1,8 +1,10 @@
 /**
- * Contract lint for the Firefox MV3 build (FF ≥ 121).
- * Replaces `web-ext lint` for service_worker: the AMO schema shipped with web-ext 8.x
- * still flags `/background/service_worker` as unsupported even though Firefox 121+ loads it.
- * Submit to AMO still uses the live online validator.
+ * Contract lint for the Firefox MV3 build (FF >= 121).
+ * Firefox does not support background.service_worker in MV3 (MDN manifest.json/background; bug 1573659): it starts
+ * the background as an event page from background.scripts. MDN recommends declaring both keys for a cross-browser
+ * extension; Firefox 121+ starts the background page when both are present. web-ext 8.x still flags service_worker
+ * as unsupported, so this contract lint replaces `web-ext lint`; AMO's online validator stays the authority at
+ * submit time.
  */
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -27,14 +29,19 @@ if (manifest.manifest_version !== 3) {
 }
 
 const background = manifest.background;
+const scripts = /** @type {{ scripts?: unknown }} */ (background)?.scripts;
 if (
   typeof background !== 'object' ||
   background === null ||
-  /** @type {{ service_worker?: unknown; type?: unknown }} */ (background)
-    .service_worker !== 'background.js' ||
-  /** @type {{ type?: unknown }} */ (background).type !== 'module'
+  /** @type {{ service_worker?: unknown }} */ (background).service_worker !== 'background.js' ||
+  /** @type {{ type?: unknown }} */ (background).type !== 'module' ||
+  !Array.isArray(scripts) ||
+  scripts.length !== 1 ||
+  scripts[0] !== 'background.js'
 ) {
-  fail('background must be { service_worker: "background.js", type: "module" }');
+  fail(
+    'background must be { scripts: ["background.js"], service_worker: "background.js", type: "module" }',
+  );
 }
 
 const gecko =

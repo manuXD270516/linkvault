@@ -1407,6 +1407,11 @@ Salida: `dist/apps/extension-firefox/` (outDir **separado** del Chromium).
 
 1. Firefox → `about:debugging` → This Firefox → **Load Temporary Add-on…** → elegir
    `dist/apps/extension-firefox/manifest.json`.
+
+   > En Firefox el fondo es un *event page* (`background.scripts`), no un service worker. Su consola se abre con
+   > **Inspeccionar** junto al complemento en `about:debugging`, y se suspende cuando queda inactivo, igual que en
+   > Chromium.
+
 2. Abre el popup / Network y copia el header `Origin` (`moz-extension://<uuid>`). En
    temporary installs el UUID **cambia en cada carga** — vuelve a pegarlo en
    `EXTENSION_CORS_ORIGINS` tras recargar el add-on. Builds firmados AMO usan el
@@ -1444,7 +1449,9 @@ Builds de **tienda** (no local): setear `EXTENSION_API_BASE_URL` a la URL de pro
 2. `pnpm nx run extension:lint-firefox` (debe pasar).
 3. Zip de `dist/apps/extension-firefox/`; submit en AMO (gecko id
    `linkvault@linkvault.app`). Privacy policy + capturas. El validador online de
-   AMO es la autoridad al publicar (el lint local no sustituye a AMO).
+   AMO es la autoridad al publicar (el lint local no sustituye a AMO). Nota: el validador online puede avisar que
+   `service_worker` no está soportado; es esperado, porque el manifiesto lo declara a propósito para
+   Chromium y para cuando Firefox lo implemente (MDN recomienda declarar las dos claves).
 4. Listing aprobado **no** es requisito para cerrar el change; solo checklist + artefacto.
 
 ---
