@@ -111,6 +111,12 @@ ir redactado y NO SHALL guardar la salida con los valores reinyectados: reponer 
 directorio de fixtures el email, el teléfono, la dirección, el documento y el nombre reales que la redacción protege frente al
 proveedor.
 
+En todo este requirement, una tarea es `personal` cuando declara esa sensibilidad **o cuando no declara ninguna**: el
+grabador y la comprobación de fixtures SHALL resolver la sensibilidad de la tarea con la misma regla por defecto que el
+enrutado (`dataSensitivityOf`), y NO SHALL leer el campo declarado directamente. Una tarea que omita el campo SHALL
+recibir el mismo rechazo, la misma comprobación de redacción antes de escribir y la misma auditoría que una declarada
+`personal`, y el rechazo SHALL nombrarla con la sensibilidad `personal`.
+
 Como `personal` es la sensibilidad por defecto y hay ya más de una tarea declarada así, este endurecimiento SHALL venir
 acompañado de una comprobación automatizada sobre **los fixtures escritos antes de esta decisión**. Lo que esa comprobación
 protege es que **ningún dato personal real llegue al disco**, no el trámite de cómo se escribió el archivo:
@@ -155,6 +161,23 @@ aplicaciones SHALL seguir rechazando `AI_MOCK_MODE=record`.
 - **AND** ningún proveedor SHALL recibir petición
 - **AND** NO SHALL escribirse ningún fixture para ese caso
 
+#### Scenario: Una tarea sin sensibilidad declarada se trata como personal al grabar
+
+- **GIVEN** una tarea que no declara `dataSensitivity`, un upstream distinto del mock (externo con `--allow-external`, o
+  local) y un caso con un email
+- **WHEN** se ejecuta el comando de grabación
+- **THEN** SHALL terminar con código 2 nombrando la tarea y la sensibilidad `personal`
+- **AND** ningún proveedor SHALL recibir petición
+- **AND** NO SHALL escribirse ningún fixture para ese caso
+
+#### Scenario: Una tarea sin sensibilidad declarada se graba redactada contra el mock
+
+- **GIVEN** una tarea que no declara `dataSensitivity`, `--upstream=mock` y un caso cuya salida trae un valor que la
+  redacción de proveedor externo sustituiría
+- **WHEN** el comando de grabación va a escribir el fixture
+- **THEN** el fixture NO SHALL escribirse
+- **AND** el caso SHALL listarse como no grabado nombrando su `id` y el `type`, nunca el valor
+
 #### Scenario: Grabar una tarea personal contra el mock
 
 - **GIVEN** una tarea `personal` y `--upstream=mock`
@@ -184,6 +207,14 @@ aplicaciones SHALL seguir rechazando `AI_MOCK_MODE=record`.
 - **WHEN** se ejecuta la comprobación automatizada de los fixtures
 - **THEN** SHALL fallar nombrando el fixture, su tarea y el `type` encontrado
 - **AND** el mensaje NO SHALL contener el valor
+
+#### Scenario: Una tarea sin sensibilidad declarada entra en la auditoría de fixtures
+
+- **GIVEN** una tarea que no declara `dataSensitivity` y un fixture suyo en disco cuyo origen declarado es un proveedor
+  externo
+- **WHEN** se ejecuta la comprobación automatizada de los fixtures
+- **THEN** SHALL fallar nombrando el fixture y su tarea
+- **AND** SHALL indicar que debe retirarse o sustituirse por uno escrito a mano o grabado contra el mock
 
 #### Scenario: Upstream externo sin permiso explícito
 

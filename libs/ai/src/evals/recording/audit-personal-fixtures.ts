@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PiiRedactor } from '../../application/pii-redactor';
-import type { AiTask } from '../../domain/task';
+import { dataSensitivityOf, type AiTask } from '../../domain/task';
 import { MOCK_PROVIDER_ID } from '../../domain/provider-ids';
 import type { AnyEvaluableTask } from '../evaluable-task';
 import { personalFixturePiiTypes } from './record-fixtures';
@@ -38,7 +38,9 @@ export async function auditPersonalFixtures(
   fixturesDir: string,
   registry: readonly AnyEvaluableTask[],
 ): Promise<PersonalFixtureAudit> {
-  const personal = registry.filter((e) => e.task.dataSensitivity === 'personal');
+  const personal = registry.filter(
+    (e) => dataSensitivityOf(e.task) === 'personal',
+  );
   const issues: PersonalFixtureIssue[] = [];
   let checked = 0;
   const redactor = new PiiRedactor();
