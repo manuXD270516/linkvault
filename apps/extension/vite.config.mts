@@ -2,17 +2,11 @@ import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { buildExtensionManifest } from './build/manifest';
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3000';
-const GECKO_EXTENSION_ID = 'linkvault@linkvault.app';
-const GECKO_STRICT_MIN_VERSION = '121.0';
-
-function hostPermissionFor(apiBaseUrl: string): string {
-  const url = new URL(apiBaseUrl);
-  return `${url.origin}/*`;
-}
 
 function extensionManifestPlugin(
   apiBaseUrl: string,
@@ -26,16 +20,8 @@ function extensionManifestPlugin(
       const template = JSON.parse(
         readFileSync(resolve(rootDir, 'manifest.template.json'), 'utf8'),
       ) as Record<string, unknown>;
-      template['host_permissions'] = [hostPermissionFor(apiBaseUrl)];
-      if (target === 'firefox') {
-        template['browser_specific_settings'] = {
-          gecko: {
-            id: GECKO_EXTENSION_ID,
-            strict_min_version: GECKO_STRICT_MIN_VERSION,
-          },
-        };
-      }
-      writeFileSync(resolve(outDir, 'manifest.json'), `${JSON.stringify(template, null, 2)}\n`);
+      const manifest = buildExtensionManifest(template, { apiBaseUrl, target });
+      writeFileSync(resolve(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
       cpSync(resolve(rootDir, 'public/_locales'), resolve(outDir, '_locales'), {
         recursive: true,
       });

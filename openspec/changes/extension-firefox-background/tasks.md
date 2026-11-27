@@ -13,7 +13,7 @@ propósito lo que vigilan, se ve el rojo y se restaura. Sin `design.md`: no hay 
 
 ## 1. Manifiesto de Firefox con `background.scripts`
 
-- [ ] 1.1 [frontend] **Extraer la composición del manifiesto sin cambiar el comportamiento.** Primero crear
+- [x] 1.1 [frontend] **Extraer la composición del manifiesto sin cambiar el comportamiento.** Primero crear
   `apps/extension/build/manifest.spec.ts` con:
   - «buildExtensionManifest sets host_permissions to the API origin» (`http://localhost:3000/` → `["http://localhost:3000/*"]`);
   - «buildExtensionManifest adds gecko id and strict_min_version 121.0 only for firefox» (Chromium sin
@@ -35,6 +35,12 @@ propósito lo que vigilan, se ve el rojo y se restaura. Sin `design.md`: no hay 
   `dist/apps/extension-firefox/manifest.json` (y el de Chromium) de antes y de después de extraer sin diferencias.
   Falsación (guardia): cambiar en la función `'/*'` por `'/**'` hace caer el primer caso; agregar `"scripts":
   ["background.js"]` al `background` de `manifest.template.json` hace caer el tercero. Restaurar los dos.
+  Estado (2026-11-27): rojo previo: `extension:test` cae con «Cannot find module './manifest' imported from
+  apps/extension/build/manifest.spec.ts» (1 suite fallida, 3 pasan). Verde: 4 casos nuevos, 17/17 tests; `typecheck`
+  y `lint` verdes; `git diff --no-index` de los manifiestos de Chromium y Firefox de antes/después de extraer, sin
+  diferencias. Falsación: `/*` → `/**` hizo caer «sets host_permissions to the API origin» (1 failed | 16 passed);
+  `scripts` en el `background` del template hizo caer «keeps chrome background as module service worker without
+  scripts». Ambos restaurados (17/17).
 
 - [ ] 1.2 [frontend] **Firefox declara `background.scripts`.** Primero, en `apps/extension/build/manifest.spec.ts`,
   agregar «buildExtensionManifest declares background scripts next to the module service worker for firefox»:
