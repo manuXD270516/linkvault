@@ -61,7 +61,7 @@ propósito lo que vigilan, se ve el rojo y se restaura. Sin `design.md`: no hay 
   `scripts` agregado in situ) hizo caer «keeps chrome background…» (comparten objeto), no el de no mutación. Los
   dos restaurados (18/18).
 
-- [ ] 1.3 [frontend] **El lint de Firefox exige `scripts` y cita MDN.** En
+- [x] 1.3 [frontend] **El lint de Firefox exige `scripts` y cita MDN.** En
   `apps/extension/scripts/lint-firefox-manifest.mjs`:
   - la condición de `background` exige además que `background.scripts` sea un array igual a `["background.js"]`;
   - el mensaje de fallo pasa a `background must be { scripts: ["background.js"], service_worker: "background.js",
@@ -80,6 +80,12 @@ propósito lo que vigilan, se ve el rojo y se restaura. Sin `design.md`: no hay 
   apps/extension/scripts/lint-firefox-manifest.mjs` devuelve `0` y `grep -c "1573659"` devuelve `1`. No pegar en el
   «Estado» la línea `OK` entera si el `.env` local apunta `EXTENSION_API_BASE_URL` a un host que no sea `localhost`
   (imprime `host_permissions`).
+  Estado (2026-11-27): rojo previo: con el manifiesto de Firefox sin `scripts` (editado a mano en `dist/`), el lint
+  sin cambiar terminó con código 0 e imprimió `[extension:lint-firefox] OK {"geckoId":"linkvault@linkvault.app",
+  "strictMinVersion":"121.0", …}`: aceptaba un fondo que Firefox no arranca. Verde: el mismo manifiesto editado ahora
+  da código 1 y «[extension:lint-firefox] background must be { scripts: ["background.js"], service_worker:
+  "background.js", type: "module" }»; `pnpm nx run extension:lint-firefox` (reconstruye) termina en `OK`;
+  `extension:lint` verde; `grep -c "Firefox 121+ loads it"` = 0 y `grep -c "1573659"` = 1.
 
 ## 2. Documentación y prueba en Firefox
 
