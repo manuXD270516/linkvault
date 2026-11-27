@@ -40,6 +40,24 @@ export const SKIP_BEARER = new HttpContextToken<boolean>(() => false);
 export const CSRF_HEADER_NAME = 'X-Requested-With';
 export const CSRF_HEADER_VALUE = 'linkvault';
 
+export interface RefreshOptions {
+  /**
+   * Al abortarse `signal`, cancela la espera del lock y los reintentos pero NO la petición ya enviada: sigue hasta que
+   * responda para que el navegador aplique su `Set-Cookie`, y su respuesta se ignora (spec web/auth, D9).
+   */
+  readonly detachOnAbort?: boolean;
+}
+
+/** Tiempo máximo que login, registro y refresh esperan a la petición desprendida antes de cancelarla (D9, R8). */
+export const DETACHED_REFRESH_WAIT_MS = 5_000;
+
+/** Petición de refresh que sigue en vuelo tras abortarse la restauración que la envió. */
+interface DetachedRequest {
+  /** Se cumple cuando la petición termina (respuesta, error o cancelación). */
+  readonly settled: Promise<void>;
+  cancel(): void;
+}
+
 const AUTH_URL = '/api/auth';
 const USERS_ME_URL = '/api/users/me';
 
@@ -50,8 +68,12 @@ export class AuthApi {
   private readonly locks = inject(REFRESH_LOCKS);
   private readonly retryPolicy = inject(REFRESH_RETRY_POLICY);
   private refreshInFlight: Promise<SessionResponse> | null = null;
+  private detached: DetachedRequest | null = null;
 
   async register(body: RegisterRequest): Promise<SessionResponse> {
+    if (this.detached) {
+      await this.awaitDetachedRefresh();
+    }
     const session = await this.send(
       this.http.post<SessionResponse>(`${AUTH_URL}/register`, body, authPostOptions(true)),
     );
@@ -60,6 +82,9 @@ export class AuthApi {
   }
 
   async login(body: LoginRequest): Promise<SessionResponse> {
+    if (this.detached) {
+      await this.awaitDetachedRefresh();
+    }
     const session = await this.send(
       this.http.post<SessionResponse>(`${AUTH_URL}/login`, body, authPostOptions(true)),
     );
@@ -75,12 +100,13 @@ export class AuthApi {
    *
    * `signal` cancela la espera del lock, la petición en curso y los reintentos, y rechaza con `AbortError` sin llamar a
    * logout. Solo aborta el intento compartido la llamada que lo inició; quien se une deja de esperar sin cancelarlo.
+   * Con `detachOnAbort` la petición ya enviada no se cancela (D9): login, registro y refresh la esperan hasta 5 s.
    */
-  refresh(signal?: AbortSignal): Promise<SessionResponse> {
+  refresh(signal?: AbortSignal, options?: RefreshOptions): Promise<SessionResponse> {
     if (this.refreshInFlight) {
       return raceAbort(this.refreshInFlight, signal);
     }
-    const flight = this.runRefresh(signal).finally(() => {
+    const flight = this.runRefresh(signal, options?.detachOnAbort === true).finally(() => {
       if (this.refreshInFlight === flight) {
         this.refreshInFlight = null;
       }
@@ -164,18 +190,43 @@ export class AuthApi {
     this.session.clear();
   }
 
-  private async runRefresh(signal?: AbortSignal): Promise<SessionResponse> {
+  /**
+   * Espera a que termine la petición desprendida de una restauración agotada, como mucho `DETACHED_REFRESH_WAIT_MS`, y
+   * la cancela si sigue en vuelo: su cookie tardía no puede pisar la de la sesión que se está por iniciar (D9, R8).
+   * Sin petición desprendida no cede el turno, para no retrasar el camino normal.
+   */
+  private async awaitDetachedRefresh(signal?: AbortSignal): Promise<void> {
+    const detached = this.detached;
+    if (!detached) {
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, DETACHED_REFRESH_WAIT_MS);
+    });
+    try {
+      await raceAbort(Promise.race([detached.settled, timeout]), signal);
+    } finally {
+      clearTimeout(timer);
+    }
+    detached.cancel();
+  }
+
+  private async runRefresh(signal?: AbortSignal, detach = false): Promise<SessionResponse> {
     signal?.throwIfAborted();
+    if (this.detached) {
+      await this.awaitDetachedRefresh(signal);
+    }
     const session = this.locks
       ? await this.locks.request(REFRESH_LOCK_NAME, signal ? { signal } : {}, () =>
-          this.refreshWithRetries(signal),
+          this.refreshWithRetries(signal, detach),
         )
-      : await this.refreshWithRetries(signal);
+      : await this.refreshWithRetries(signal, detach);
     this.session.setSession(session);
     return session;
   }
 
-  private async refreshWithRetries(signal?: AbortSignal): Promise<SessionResponse> {
+  private async refreshWithRetries(signal?: AbortSignal, detach = false): Promise<SessionResponse> {
     const { delaysMs, jitterRatio, random, sleep } = this.retryPolicy;
     for (let attempt = 0; ; attempt++) {
       signal?.throwIfAborted();
@@ -183,6 +234,7 @@ export class AuthApi {
         return await this.send(
           this.http.post<SessionResponse>(`${AUTH_URL}/refresh`, null, authPostOptions(true)),
           signal,
+          detach,
         );
       } catch (error: unknown) {
         if (!isRefreshConflict(error)) {
@@ -199,26 +251,50 @@ export class AuthApi {
     }
   }
 
-  /** Convierte la petición en promesa; si `signal` se aborta, cancela la petición y rechaza con su motivo. */
-  private send<T>(request: Observable<T>, signal?: AbortSignal): Promise<T> {
+  /**
+   * Convierte la petición en promesa; si `signal` se aborta, cancela la petición y rechaza con su motivo. Con `detach`
+   * rechaza igual pero deja la petición en vuelo (queda en `this.detached`) y descarta su respuesta.
+   */
+  private send<T>(request: Observable<T>, signal?: AbortSignal, detach = false): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       if (signal?.aborted) {
         reject(abortReason(signal));
         return;
       }
       let value: T;
+      let detachedRequest: DetachedRequest | null = null;
+      let markSettled: () => void = () => undefined;
+      const finish = (): void => {
+        signal?.removeEventListener('abort', onAbort);
+        if (detachedRequest && this.detached === detachedRequest) {
+          this.detached = null;
+        }
+        markSettled();
+      };
       const onAbort = (): void => {
-        subscription.unsubscribe();
+        if (detach) {
+          const settled = new Promise<void>((done) => (markSettled = done));
+          detachedRequest = {
+            settled,
+            cancel: () => {
+              subscription.unsubscribe();
+              finish();
+            },
+          };
+          this.detached = detachedRequest;
+        } else {
+          subscription.unsubscribe();
+        }
         reject(abortReason(signal));
       };
       const subscription = request.subscribe({
         next: (next) => (value = next),
         error: (error: unknown) => {
-          signal?.removeEventListener('abort', onAbort);
+          finish();
           reject(error);
         },
         complete: () => {
-          signal?.removeEventListener('abort', onAbort);
+          finish();
           resolve(value);
         },
       });

@@ -137,7 +137,8 @@ El producto limita el registro a **10 intentos de registro cada 15 minutos por I
 | `e2e-stack`: perfil `local`, `chromium` y `mobile`, dos personas cada uno | 4 |
 | Más `weekly-plan.spec.ts` (`@lot1`, una persona por proyecto: `chromium` el caso de escritorio, `mobile` el de móvil) | +2 (6 en total) |
 | Más `group-weekly-brief.spec.ts` (`@lot1`, una persona por proyecto: `chromium` el caso de escritorio, `mobile` el de móvil y el vacío, con un segundo grupo de la misma cuenta) | +2 (8 en total) |
-| `e2e-stack --rehearse-remote`: lo anterior + la siembra de la cuenta del ensayo | 5 |
+| Más `auth-refresh-abort.spec.ts` (`@lot1`, una persona por proyecto, `chromium` y `mobile`) | +1 (9 en total) |
+| `e2e-stack --rehearse-remote`: lo anterior + la siembra de la cuenta del ensayo (sin `auth-refresh-abort.spec.ts`, que no lleva `@remote-safe`) | 5 |
 | Admisión de `local` en **un** proyecto, `--repeat-each=5` (una invocación por proyecto, pila nueva) | 10, **justo el límite** |
 | Admisión del ensayo en un proyecto (`--rehearse-remote --skip-local`) | 1 |
 
@@ -278,3 +279,21 @@ repetición; el caso de móvil crea además un segundo grupo, sin documento, par
 
 Ningún fallo ni intermitente: la tarjeta «La semana del grupo» queda **admitida** en el lote 1. Falsación previa: con el
 texto de la habilidad cambiado (`3 de las 3`) y el alto mínimo del botón subido a 80 px, `chromium` y `mobile` fallan.
+
+### 2026-11-26 — `auth-refresh-abort.spec.ts` en `chromium` y `mobile` (change `session-refresh-abort`, tarea 3.1, sobre `a1dd8243`)
+
+Solo perfil `local`: no lleva `@remote-safe` (crea una cuenta por repetición y depende de la reemisión de la API de este
+change), así que no tiene ensayo. Una invocación por proyecto con `--grep "reload while the restore refresh"
+--repeat-each=5`, con la carga de arriba (24 procesos desde que empieza Playwright):
+
+| Invocación | Resultado | Registro |
+|---|---|---|
+| `pnpm nx run web-e2e:e2e-stack -- --project=chromium --grep "reload while the restore refresh" --repeat-each=5` | 5 de 5 en verde (4,0 min) | 5 `POST /api/auth/register` `201`, ningún `429` |
+| `pnpm nx run web-e2e:e2e-stack -- --project=mobile --grep "reload while the restore refresh" --repeat-each=5` | 5 de 5 en verde (3,9 min) | 5 `POST /api/auth/register` `201`, ningún `429` |
+
+Falsación previa: con `REFRESH_REISSUE_LIMIT = 0` en la API (sin commitear), el caso falla en `chromium`; con el valor
+restaurado, pasa. Eso prueba también que el `Set-Cookie` de `route.fetch()` no llega al jar del contexto: si llegara, la
+segunda carga ya llevaría el sucesor y el caso pasaría igual sin la reemisión. Dos ajustes salieron de admisiones con
+carga que fallaron y se arreglaron antes de las corridas de arriba: el primer alta de una pila fría llegó a tardar 15 s
+(plazo de 45 s) y, con la API lenta, la restauración de la página retenida agotó sus 10 s y la dejó en `/login`, por lo
+que la segunda carga es `page.goto('/perfil')` y no `reload()`.

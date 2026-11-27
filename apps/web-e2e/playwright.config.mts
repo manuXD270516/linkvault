@@ -81,7 +81,12 @@ export default defineConfig({
     {
       name: 'mobile',
       use: { ...devices['Pixel 7'] },
-      testMatch: ['critical-path.spec.ts', 'weekly-plan.spec.ts', 'group-weekly-brief.spec.ts'],
+      testMatch: [
+        'critical-path.spec.ts',
+        'weekly-plan.spec.ts',
+        'group-weekly-brief.spec.ts',
+        'auth-refresh-abort.spec.ts',
+      ],
       // De `weekly-plan.spec.ts` y `group-weekly-brief.spec.ts` corre solo el caso de móvil: el de escritorio es de `chromium`.
       grepInvert: /@desktop-case/,
     },

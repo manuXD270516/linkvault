@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Clock } from './clock';
 import {
   REFRESH_CONFLICT_WINDOW_MS,
+  REFRESH_REISSUE_LIMIT,
   RefreshSessionPolicy,
   type RefreshTokenState,
   type SessionState,
@@ -41,7 +42,13 @@ function session(overrides: Partial<SessionState> = {}): SessionState {
 }
 
 function token(overrides: Partial<RefreshTokenState> = {}): RefreshTokenState {
-  return { expiresAt: fromNow(29 * DAY), rotatedAt: null, ...overrides };
+  return {
+    expiresAt: fromNow(29 * DAY),
+    rotatedAt: null,
+    advanced: false,
+    reissueCount: 0,
+    ...overrides,
+  };
 }
 
 describe('RefreshSessionPolicy', () => {
@@ -90,19 +97,87 @@ describe('RefreshSessionPolicy', () => {
       });
     });
 
-    it('returns conflict for a token rotated 2 seconds ago', () => {
+    it('reissues a token rotated 2 seconds ago whose successor was never used', () => {
       expect(
         policy.decide(token({ rotatedAt: ago(2 * SECOND) }), session()),
+      ).toEqual({
+        outcome: 'reissue',
+        now: NOW,
+        successorExpiresAt: fromNow(30 * DAY),
+      });
+    });
+
+    it('returns conflict for a token rotated 2 seconds ago whose successor was used', () => {
+      expect(
+        policy.decide(
+          token({ rotatedAt: ago(2 * SECOND), advanced: true }),
+          session(),
+        ),
       ).toEqual({ outcome: 'conflict' });
     });
 
-    it('returns conflict within the window even if the successor was already used', () => {
-      // La regla solo mira cuándo se rotó el token presentado: el uso del sucesor no la cambia.
+    it('returns conflict after 3 reissues', () => {
+      expect(REFRESH_REISSUE_LIMIT).toBe(3);
+      const rotatedAt = ago(2 * SECOND);
+
+      expect(
+        policy.decide(token({ rotatedAt, reissueCount: 2 }), session()).outcome,
+      ).toBe('reissue');
+      expect(
+        policy.decide(
+          token({ rotatedAt, reissueCount: REFRESH_REISSUE_LIMIT }),
+          session(),
+        ),
+      ).toEqual({ outcome: 'conflict' });
+    });
+
+    it('returns conflict for a token rotated before reissue existed', () => {
+      expect(
+        policy.decide(
+          token({ rotatedAt: ago(2 * SECOND), reissueCount: null }),
+          session(),
+        ),
+      ).toEqual({ outcome: 'conflict' });
+    });
+
+    it('keeps the window anchored to the first rotation', () => {
+      // Rotado hace 9 s y reemitido hace 1 s: la reemisión no mueve `rotatedAt`, así que a los 10 s es reuso.
+      const rotatedAt = ago(9 * SECOND);
+      const reissued = token({ rotatedAt, reissueCount: 1 });
+      expect(policy.decide(reissued, session()).outcome).toBe('reissue');
+
+      const later = new RefreshSessionPolicy(
+        new FixedClock(new Date(rotatedAt.getTime() + 10 * SECOND)),
+        settings,
+      );
+      expect(later.decide(reissued, session())).toEqual({ outcome: 'reuse' });
+    });
+
+    it('treats a token rotated 10 seconds ago as reuse even if its successor was never used', () => {
+      expect(
+        policy.decide(
+          token({ rotatedAt: ago(10 * SECOND), advanced: false }),
+          session(),
+        ),
+      ).toEqual({ outcome: 'reuse' });
+    });
+
+    it('never reissues a superseded token', () => {
+      // Un hermano superado tiene `rotatedAt` y `advanced` desde el mismo instante y contador 0.
+      expect(
+        policy.decide(
+          token({ rotatedAt: ago(SECOND), advanced: true, reissueCount: 0 }),
+          session(),
+        ),
+      ).toEqual({ outcome: 'conflict' });
+    });
+
+    it('returns conflict within the window even after the successor was used', () => {
       const rotatedAt = ago(REFRESH_CONFLICT_WINDOW_MS - 1);
 
-      expect(policy.decide(token({ rotatedAt }), session())).toEqual({
-        outcome: 'conflict',
-      });
+      expect(
+        policy.decide(token({ rotatedAt, advanced: true }), session()),
+      ).toEqual({ outcome: 'conflict' });
     });
 
     it.each([10, 11])(
@@ -187,7 +262,7 @@ describe('RefreshSessionPolicy', () => {
   it('reads the clock on every decision', () => {
     let current = NOW;
     const moving = new RefreshSessionPolicy({ now: () => current }, settings);
-    const rotated = token({ rotatedAt: NOW });
+    const rotated = token({ rotatedAt: NOW, advanced: true });
 
     expect(moving.decide(rotated, session())).toEqual({ outcome: 'conflict' });
     current = fromNow(REFRESH_CONFLICT_WINDOW_MS);

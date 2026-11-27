@@ -29,7 +29,9 @@ export interface RefreshSessionInput {
 
 /**
  * `POST /api/auth/refresh` y `POST /api/auth/extension/refresh` (spec auth/sessions + ADR-038). Rota el refresh y
- * emite un access nuevo de la misma sesión. `RefreshConflict` (409) si se rotó hace menos de 10 s; `InvalidRefresh`
+ * emite un access nuevo de la misma sesión. Si se rotó hace menos de 10 s y su sucesor no se usó, la respuesta de esa
+ * rotación se da por perdida y se reemite un hermano con `200` (ADR-072; el aviso lleva solo ids y el número de
+ * reemisión). `RefreshConflict` (409) si se rotó hace menos de 10 s con el sucesor ya usado o tope alcanzado; `InvalidRefresh`
  * (401) si falta, es desconocido, caducó, su sesión está revocada, es del otro cliente o se reusó. El reuso ya dejó la
  * sesión revocada y se avisa con `userId` y `sessionId`, nunca con tokens. El presentador web borra cookie en
  * `InvalidRefresh`; el de extensión no toca cookies.
@@ -66,6 +68,13 @@ export class RefreshSession {
         });
         throw new InvalidRefresh('reused');
       case 'rotated':
+        if (result.reissued) {
+          this.securityLog.refreshTokenReissued({
+            userId: result.userId,
+            sessionId: result.sessionId,
+            reissueCount: result.reissueCount,
+          });
+        }
         break;
     }
 

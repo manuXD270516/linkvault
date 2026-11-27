@@ -148,12 +148,14 @@ describe('session restore and guards', () => {
     await advanceUntil(navigation);
 
     expect(SESSION_RESTORE_TIMEOUT_MS).toBe(10_000);
-    expect(refresh.cancelled).toBe(true);
+    // D9: la restauración agotada deja de esperar, pero no cancela su petición ya enviada.
+    expect(refresh.cancelled).toBe(false);
     expect(router.url).toBe('/login');
     expect(store.status()).toBe('anonymous');
     await vi.advanceTimersByTimeAsync(SESSION_RESTORE_TIMEOUT_MS);
     http.expectNone('/api/auth/refresh');
     http.expectNone('/api/auth/logout');
+    refresh.error(new ProgressEvent('error'), { status: 0, statusText: 'Unknown Error' });
   });
 
   it('continues without a session when the refresh is rejected, without logging out', async () => {
