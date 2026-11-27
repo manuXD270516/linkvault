@@ -118,7 +118,13 @@ propósito lo que vigilan, se ve el rojo y se restaura. Sin `design.md`: no hay 
 
 ## 3. Cierre
 
-- [ ] 3.1 [frontend] `pnpm nx affected -t lint,typecheck,test,i18n-check` verde;
+- [x] 3.1 [frontend] `pnpm nx affected -t lint,typecheck,test,i18n-check` verde;
   `node node_modules/@fission-ai/openspec/bin/openspec.js validate extension-firefox-background --strict
   --no-interactive` y `validate --all --strict --no-interactive` verdes; `bash infra/ci/repo-checks.sh` verde.
   Verificar: las cuatro salidas en el «Estado».
+  Estado (2026-11-27): `pnpm nx affected -t lint,typecheck,test,i18n-check --base=origin/main` verde (lint,
+  typecheck y test sobre 2 proyectos; `i18n-check` no aplica a ninguno de los afectados); `openspec validate
+  extension-firefox-background --strict --no-interactive`: «Change 'extension-firefox-background' is valid»;
+  `validate --all --strict --no-interactive`: «Totals: 82 passed, 0 failed (82 items)»; `bash
+  infra/ci/repo-checks.sh`: «ok: 5 comprobaciones de repositorio ejecutadas». Quedan abiertas la 2.2 (simulación,
+  del owner).
