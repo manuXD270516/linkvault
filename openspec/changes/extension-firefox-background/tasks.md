@@ -100,7 +100,7 @@ propósito lo que vigilan, se ve el rojo y se restaura. Sin `design.md`: no hay 
   nota de «Firefox AMO» sobre el aviso de `service_worker` quedó en el paso 3. `bash infra/ci/repo-checks.sh` verde
   («5 comprobaciones de repositorio ejecutadas»).
 
-- [ ] 2.2 [infra] **Prueba manual en Firefox, a cargo del owner** (no hay Firefox en la máquina del agente). Con la
+- [x] 2.2 [infra] **Prueba manual en Firefox, a cargo del owner** (no hay Firefox en la máquina del agente). Con la
   pila local arriba (`pnpm infra:up`, `pnpm nx serve api`):
   1. `pnpm nx run extension:lint-firefox` en `OK`.
   2. Firefox ≥ 121 → `about:debugging#/runtime/this-firefox` → «Cargar complemento temporario…» → elegir
@@ -118,6 +118,18 @@ propósito lo que vigilan, se ve el rojo y se restaura. Sin `design.md`: no hay 
 
 ## 3. Cierre
 
+  Estado (2026-11-27): **cubierta por simulación**, a pedido del owner («Realiza pruebas simuladas del browser aquí en
+  el navegador interno»); no es Firefox real. Arnés en `sim/` (`sim.html`, `stub.js`, `server.mjs`): el build de
+  Firefox (con `EXTENSION_API_BASE_URL` apuntando al proxy) se sirve en `:4310` con un proxy de `/api` a la API de la
+  pila e2e (`:3100`); la página lee `manifest.json` y, como hace Firefox con un event page, carga como módulo cada
+  `background.scripts`, con un `browser`/`chrome` falso (mensajería, `storage.local`, `i18n`, `tabs`).
+  Resultado en el navegador interno (Chromium): con el manifiesto nuevo, el event page carga `background.js`, registra
+  el listener, el popup muestra el login, «Entrar» guarda la sesión en `storage.local`, «Guardar» responde «Guardado en
+  LinkVault» y «Cerrar sesión» borra la sesión (capturas `01` y `02`). Contraprueba con el manifiesto anterior (solo
+  `service_worker`): el fondo no arranca, `sendMessage` falla con «Receiving end does not exist» y el popup queda en
+  blanco (`03`): es el defecto de H10. Sin probar: la carga real por `about:debugging`, el CORS `moz-extension://` y el
+  ciclo de vida del event page en Firefox; quedan para antes de publicar en AMO. Hallazgo menor: el popup no maneja el
+  rechazo de `sendMessage` y queda en blanco sin mensaje de error (change aparte si se quiere).
 - [x] 3.1 [frontend] `pnpm nx affected -t lint,typecheck,test,i18n-check` verde;
   `node node_modules/@fission-ai/openspec/bin/openspec.js validate extension-firefox-background --strict
   --no-interactive` y `validate --all --strict --no-interactive` verdes; `bash infra/ci/repo-checks.sh` verde.
