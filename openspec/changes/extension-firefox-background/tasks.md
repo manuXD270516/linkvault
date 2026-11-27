@@ -5,10 +5,11 @@ arreglar; la salida de ese fallo se anota en el «Estado» de la tarea. Los guar
 propósito lo que vigilan, se ve el rojo y se restaura. Sin `design.md`: no hay decisiones no triviales; los motivos
 (solo Firefox, mantener `service_worker`) están en `proposal.md`.
 
-- [ ] 0.1 [infra] Q1 del proposal respondida por el owner y anotada con fecha en `proposal.md` (debajo de la Q1, en
+- [x] 0.1 [infra] Q1 del proposal respondida por el owner y anotada con fecha en `proposal.md` (debajo de la Q1, en
   una línea que empieza por «Respuesta del owner (AAAA-MM-DD):»). Si Q1 = (b), el change no pasa de aquí hasta archivar
   la 35c; si Q1 = (c), hasta que se decida publicar en AMO. Verificar: `grep -c "Respuesta del owner (20"
   openspec/changes/extension-firefox-background/proposal.md` devuelve `1` (antes, `0`).
+  Estado (2026-11-27): Q1 = (a) «Aplicar ahora»; Q2 sustituida por la simulación en el navegador interno (ver proposal).
 
 ## 1. Manifiesto de Firefox con `background.scripts`
 

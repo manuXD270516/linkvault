@@ -109,6 +109,9 @@ Ninguna.
   **Recomendación: (b).** Nadie usa la extensión de Firefox y 35b la deja fuera; adelantarlo no mejora ninguna
   medición. Si el owner prefiere no dejar un build roto en `main` por más tiempo, (a) es barato y de bajo riesgo:
   unas 4 tareas, solo la extensión.
+
+  Respuesta del owner (2026-11-27): **(a)**, «Aplicar ahora». Excepción de la misma clase que ADR-055 §1: solo la
+  extensión, sin despliegue ni `platform/*`.
 - **Q2 [no bloqueante] ¿La prueba en Firefox real condiciona la fusión?**
   - (a) Sí: el PR no se fusiona sin la tarea 2.2 hecha.
   - (b) No: se fusiona con los guardias automáticos y la prueba queda para antes de publicar en AMO.
@@ -116,3 +119,9 @@ Ninguna.
   **Recomendación: (a).** Es la única prueba de que el fondo arranca. El test de contrato y el lint fijan el
   manifiesto que MDN documenta, pero no lo ejecutan en Firefox, y ese hueco es justamente el que dejó pasar el
   defecto en la fila 33.
+
+  Respuesta del owner a la Q2 (2026-11-27): «Realiza pruebas simuladas del browser aquí en el navegador interno». La
+  tarea 2.2 se cubre con una **simulación** en el navegador interno de la app (Chromium): el `background.js` del build
+  de Firefox se carga como módulo en una página, que es como Firefox ejecuta un event page, con un `browser`/`chrome`
+  falso, y se recorre el flujo del popup contra la API local. No es Firefox real: la carga del manifiesto por
+  `about:debugging` y el CORS `moz-extension://` quedan sin probar hasta antes de publicar en AMO.
