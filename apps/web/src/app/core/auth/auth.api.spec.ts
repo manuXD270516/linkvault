@@ -2,12 +2,14 @@ import { HttpRequest, provideHttpClient } from '@angular/common/http';
 import {
   HttpTestingController,
   provideHttpClientTesting,
+  type TestRequest,
 } from '@angular/common/http/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { SessionResponse, UserProfile } from '@linkvault/shared';
 import { AI_CONSENT_TEXT_VERSION } from '@linkvault/shared';
 import { AuthApi, SKIP_BEARER } from './auth.api';
+import { REFRESH_LOCKS, isAbortError } from './refresh-coordination';
 import { SessionStore } from './session.store';
 
 const user: UserProfile = {
@@ -336,5 +338,98 @@ describe('AuthApi', () => {
     });
     expect(store.status()).toBe('authenticated');
     expect(store.accessToken()).toBe('token-1');
+  });
+});
+describe('AuthApi with a detached restore request in flight', () => {
+  const DETACHED_WAIT_MS = 5_000;
+  let api: AuthApi;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: REFRESH_LOCKS, useValue: null },
+      ],
+    });
+    api = TestBed.inject(AuthApi);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    http.verify();
+  });
+
+  /** Lanza un refresh desprendible, lo deja enviado y lo aborta: la petición queda en vuelo. */
+  async function startDetachedRestore(): Promise<TestRequest> {
+    const controller = new AbortController();
+    const restoring = api.refresh(controller.signal, { detachOnAbort: true });
+    restoring.catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    const request = http.expectOne('/api/auth/refresh');
+    controller.abort();
+    await expect(restoring).rejects.toSatisfy(isAbortError);
+    return request;
+  }
+
+  const loginBody = { email: 'ana@example.com', password: 'contraseña-larga' };
+  const registerBody = { ...loginBody, displayName: 'Ana' };
+
+  const followUps: readonly {
+    name: string;
+    url: string;
+    start: () => Promise<unknown>;
+  }[] = [
+    { name: 'login', url: '/api/auth/login', start: () => api.login(loginBody) },
+    { name: 'register', url: '/api/auth/register', start: () => api.register(registerBody) },
+    { name: 'refresh', url: '/api/auth/refresh', start: () => api.refresh() },
+  ];
+
+  for (const followUp of followUps) {
+    const title =
+      followUp.name === 'login'
+        ? 'Login tras una restauración agotada'
+        : `waits for the detached restore request before ${followUp.name}`;
+
+    it(title, async () => {
+      const detached = await startDetachedRestore();
+      const next = followUp.start();
+      next.catch(() => undefined);
+
+      await vi.advanceTimersByTimeAsync(DETACHED_WAIT_MS - 1);
+      http.expectNone(followUp.url);
+      expect(detached.cancelled).toBe(false);
+
+      detached.flush(session);
+      await vi.advanceTimersByTimeAsync(0);
+      http.expectOne(followUp.url).flush(session);
+      await expect(next).resolves.toEqual(session);
+    });
+
+    it(`cancels the detached restore request after 5 seconds before ${followUp.name}`, async () => {
+      const detached = await startDetachedRestore();
+      const next = followUp.start();
+
+      await vi.advanceTimersByTimeAsync(DETACHED_WAIT_MS - 1);
+      http.expectNone(followUp.url);
+      expect(detached.cancelled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(detached.cancelled).toBe(true);
+      http.expectOne(followUp.url).flush(session);
+      await expect(next).resolves.toEqual(session);
+    });
+  }
+
+  it('does not apply the body of a late detached 200 to the session', async () => {
+    const detached = await startDetachedRestore();
+    detached.flush(session);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(TestBed.inject(SessionStore).status()).toBe('unknown');
   });
 });

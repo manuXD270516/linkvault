@@ -25,8 +25,9 @@ export function isPublicPath(pathname: string): boolean {
 
 /**
  * Restaura la sesión con un refresh al cargar. Se ejecuta una sola vez: el initializer la arranca y los guards la
- * esperan antes de resolver la primera navegación. Si el refresh falla o se agota el tiempo, aborta la cadena (sin
- * reintentos ni logout) y deja la sesión en `anonymous`.
+ * esperan antes de resolver la primera navegación. Si el refresh falla o se agota el tiempo, deja de esperar y cancela los
+ * reintentos (sin logout) y deja la sesión en `anonymous`; una petición ya enviada sigue hasta responder y su cuerpo se
+ * ignora (D9).
  */
 @Injectable({ providedIn: 'root' })
 export class SessionRestore {
@@ -46,7 +47,8 @@ export class SessionRestore {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), SESSION_RESTORE_TIMEOUT_MS);
     try {
-      await this.authApi.refresh(controller.signal);
+      // Si el tiempo se agota con la petición ya enviada, no se cancela: el navegador aplica su cookie y se ignora el cuerpo.
+      await this.authApi.refresh(controller.signal, { detachOnAbort: true });
     } catch {
       // Sin sesión que restaurar, API caída o tiempo agotado: se continúa como invitado.
       this.store.clear();

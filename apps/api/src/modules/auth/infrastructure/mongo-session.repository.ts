@@ -8,7 +8,10 @@ import type {
   StoredRefreshToken,
 } from '../application/ports/session-repository.port';
 import type { Clock } from '../domain/clock';
-import type { RefreshSessionPolicy } from '../domain/refresh-session';
+import {
+  REFRESH_REISSUE_LIMIT,
+  type RefreshSessionPolicy,
+} from '../domain/refresh-session';
 import {
   resolveSessionClient,
   type SessionClient,
@@ -37,6 +40,14 @@ function modelOf<T>(
   );
 }
 
+/**
+ * Punto de pausa **solo para tests** (H3 de session-refresh-abort): `rotate` lo invoca tras leer y decidir, antes de
+ * escribir, para intercalar dos transacciones de forma determinista. Ausente en `auth.module.ts`.
+ */
+export interface RotationProbe {
+  afterRead(kind: 'rotate' | 'reissue'): Promise<void>;
+}
+
 export class MongoSessionRepository implements SessionRepository {
   private readonly sessions: Model<AuthSessionDocument>;
   private readonly tokens: Model<RefreshTokenDocument>;
@@ -45,6 +56,7 @@ export class MongoSessionRepository implements SessionRepository {
     private readonly connection: Connection,
     private readonly policy: RefreshSessionPolicy,
     private readonly clock: Clock,
+    private readonly rotationProbe?: RotationProbe,
   ) {
     this.sessions = modelOf<AuthSessionDocument>(
       connection,
@@ -90,6 +102,8 @@ export class MongoSessionRepository implements SessionRepository {
             expiresAt: window.refreshExpiresAt,
             rotatedAt: null,
             replacedByHash: null,
+            parentHash: null,
+            advancedAt: null,
           },
         ],
         { session },
@@ -179,7 +193,14 @@ export class MongoSessionRepository implements SessionRepository {
       }
 
       // 1–2. Validez, ventana de conflicto y reuso: reglas del dominio.
-      const decision = this.policy.decide(token, stored);
+      const decision = this.policy.decide(
+        {
+          ...token,
+          advanced: (token.advancedAt ?? null) !== null,
+          reissueCount: token.reissueCount ?? null,
+        },
+        stored,
+      );
       switch (decision.outcome) {
         case 'invalid':
           return decision;
@@ -194,7 +215,37 @@ export class MongoSessionRepository implements SessionRepository {
             .session(session)
             .exec();
           return { outcome: 'reused', ...identity };
+        case 'reissue': {
+          await this.rotationProbe?.afterRead('reissue');
+          // Respuesta de rotación perdida (ADR-072): el token ya está rotado y su sucesor no se usó. Se emite un
+          // hermano sin tocar `rotatedAt`. La escritura sobre el token presentado es condicional: `advancedAt` nulo,
+          // contador existente (un token rotado por una versión sin reemisión no lo tiene) y por debajo del tope.
+          const bumped = await this.tokens
+            .updateOne(
+              {
+                tokenHash,
+                advancedAt: null,
+                reissueCount: { $exists: true, $lt: REFRESH_REISSUE_LIMIT },
+              },
+              { $inc: { reissueCount: 1 } },
+            )
+            .session(session)
+            .exec();
+          if (bumped.modifiedCount !== 1) {
+            return { outcome: 'conflict', ...identity };
+          }
+          return this.insertSuccessor(session, {
+            ...identity,
+            parentHash: tokenHash,
+            successorHash,
+            now: decision.now,
+            successorExpiresAt: decision.successorExpiresAt,
+            reissued: true,
+            reissueCount: (token.reissueCount ?? 0) + 1,
+          });
+        }
         case 'rotate':
+          await this.rotationProbe?.afterRead('rotate');
           break;
       }
 
@@ -202,7 +253,13 @@ export class MongoSessionRepository implements SessionRepository {
       const marked = await this.tokens
         .updateOne(
           { tokenHash, rotatedAt: null },
-          { $set: { rotatedAt: decision.now, replacedByHash: successorHash } },
+          {
+            $set: {
+              rotatedAt: decision.now,
+              replacedByHash: successorHash,
+              reissueCount: 0,
+            },
+          },
         )
         .session(session)
         .exec();
@@ -210,42 +267,97 @@ export class MongoSessionRepository implements SessionRepository {
         return { outcome: 'conflict', ...identity };
       }
 
-      // 4. Recomprobar la sesión e insertar el sucesor, con caducidad deslizante acotada por el máximo de la sesión.
-      const current = await this.sessions
-        .findById(token.sessionId)
-        .session(session)
-        .lean()
-        .exec();
-      if (!this.policy.isSessionActive(current)) {
-        return {
-          outcome: 'invalid',
-          reason: !current
-            ? 'session_missing'
-            : current.revokedAt !== null
-              ? 'session_revoked'
-              : 'session_expired',
-        };
+      // 3b. Primer uso de un hermano (D3 de session-refresh-abort). Se escribe siempre en el padre (`advancedAt` =
+      // «la familia ya avanzó»): reemisión y rotación de un hijo chocan en ese documento y la base de datos las
+      // serializa; sin esa escritura común, el `updateMany` no vería un hermano insertado en paralelo. Los hermanos
+      // sin rotar quedan superados: rotados y avanzados en `now`, sin sucesor.
+      if (token.parentHash) {
+        await this.tokens
+          .updateOne(
+            { tokenHash: token.parentHash },
+            { $set: { advancedAt: decision.now } },
+          )
+          .session(session)
+          .exec();
+        await this.tokens
+          .updateMany(
+            {
+              parentHash: token.parentHash,
+              rotatedAt: null,
+              tokenHash: { $ne: tokenHash },
+            },
+            { $set: { rotatedAt: decision.now, advancedAt: decision.now } },
+          )
+          .session(session)
+          .exec();
       }
-      await this.tokens.create(
-        [
-          {
-            tokenHash: successorHash,
-            sessionId: token.sessionId,
-            userId: token.userId,
-            createdAt: decision.now,
-            expiresAt: decision.successorExpiresAt,
-            rotatedAt: null,
-            replacedByHash: null,
-          },
-        ],
-        { session },
-      );
-      return {
-        outcome: 'rotated',
+
+      // 4. Recomprobar la sesión e insertar el sucesor, con caducidad deslizante acotada por el máximo de la sesión.
+      return this.insertSuccessor(session, {
         ...identity,
-        refreshExpiresAt: decision.successorExpiresAt,
-      };
+        parentHash: tokenHash,
+        successorHash,
+        now: decision.now,
+        successorExpiresAt: decision.successorExpiresAt,
+        reissued: false,
+        reissueCount: 0,
+      });
     });
+  }
+
+  /** Paso común de rotación y reemisión: recomprueba la sesión dentro de la transacción e inserta el token nuevo. */
+  private async insertSuccessor(
+    session: ClientSession,
+    input: {
+      readonly sessionId: string;
+      readonly userId: string;
+      readonly parentHash: string;
+      readonly successorHash: string;
+      readonly now: Date;
+      readonly successorExpiresAt: Date;
+      readonly reissued: boolean;
+      readonly reissueCount: number;
+    },
+  ): Promise<RotationResult> {
+    const current = await this.sessions
+      .findById(input.sessionId)
+      .session(session)
+      .lean()
+      .exec();
+    if (!this.policy.isSessionActive(current)) {
+      return {
+        outcome: 'invalid',
+        reason: !current
+          ? 'session_missing'
+          : current.revokedAt !== null
+            ? 'session_revoked'
+            : 'session_expired',
+      };
+    }
+    await this.tokens.create(
+      [
+        {
+          tokenHash: input.successorHash,
+          sessionId: input.sessionId,
+          userId: input.userId,
+          createdAt: input.now,
+          expiresAt: input.successorExpiresAt,
+          rotatedAt: null,
+          replacedByHash: null,
+          parentHash: input.parentHash,
+          advancedAt: null,
+        },
+      ],
+      { session },
+    );
+    return {
+      outcome: 'rotated',
+      sessionId: input.sessionId,
+      userId: input.userId,
+      refreshExpiresAt: input.successorExpiresAt,
+      reissued: input.reissued,
+      reissueCount: input.reissueCount,
+    };
   }
 
   private async withTransaction<T>(
@@ -271,5 +383,8 @@ function toStoredRefreshToken(
     expiresAt: document.expiresAt,
     rotatedAt: document.rotatedAt,
     replacedByHash: document.replacedByHash,
+    parentHash: document.parentHash ?? null,
+    advancedAt: document.advancedAt ?? null,
+    reissueCount: document.reissueCount ?? null,
   };
 }

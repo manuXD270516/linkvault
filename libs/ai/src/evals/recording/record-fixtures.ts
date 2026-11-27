@@ -4,6 +4,7 @@ import { PiiRedactor } from '../../application/pii-redactor';
 import type { RunTaskFn } from '../../application/run-task.usecase';
 import type { AiResult } from '../../domain/ai-result';
 import { AiProgrammingError } from '../../domain/errors';
+import { dataSensitivityOf } from '../../domain/task';
 import type { UsageRecord } from '../../domain/ports/usage-ledger.port';
 import type { MockFixture } from '../../infrastructure/providers/mock-deterministic.provider';
 import type { RecordingUpstream } from '../cli/args';
@@ -80,10 +81,10 @@ export async function recordFixtures<I, O, E>(
     options;
   const { task } = evaluable;
 
-  if (task.dataSensitivity === 'personal' && upstream !== 'mock') {
+  if (dataSensitivityOf(task) === 'personal' && upstream !== 'mock') {
     throw new PersonalTaskUpstreamRejected(
       task.name,
-      task.dataSensitivity,
+      dataSensitivityOf(task),
       upstream,
     );
   }
@@ -133,7 +134,7 @@ export async function recordFixtures<I, O, E>(
       continue;
     }
 
-    if (task.dataSensitivity === 'personal') {
+    if (dataSensitivityOf(task) === 'personal') {
       const dirty = personalFixturePiiTypes(result.output, redactor);
       if (dirty.length > 0) {
         failed.push({

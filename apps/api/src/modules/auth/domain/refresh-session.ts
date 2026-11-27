@@ -8,6 +8,9 @@ import type { InvalidRefreshReason } from './errors';
 /** Un token rotado hace menos de esto es un refresh concurrente del mismo navegador; a partir de aquí, reuso. */
 export const REFRESH_CONFLICT_WINDOW_MS = 10_000;
 
+/** Reemisiones máximas de un token rotado dentro de la ventana (ADR-072, D4 de session-refresh-abort). */
+export const REFRESH_REISSUE_LIMIT = 3;
+
 const DAY_MS = 86_400_000;
 
 export interface RefreshSessionSettings {
@@ -26,6 +29,10 @@ export interface SessionState {
 export interface RefreshTokenState {
   readonly expiresAt: Date;
   readonly rotatedAt: Date | null;
+  /** La familia ya avanzó más allá de este token: su sucesor (o un hermano de este) se usó, o quedó superado. */
+  readonly advanced: boolean;
+  /** Reemisiones hechas; `null` si el token se rotó antes de que existiera la reemisión (nunca se reemite). */
+  readonly reissueCount: number | null;
 }
 
 /** Fechas de una sesión nueva y de su primer refresh token. */
@@ -42,7 +49,16 @@ export type RefreshDecision =
       readonly now: Date;
       readonly successorExpiresAt: Date;
     }
-  /** Rotado hace menos de 10 s: 409 sin revocar ni emitir cookie. */
+  /**
+   * Rotado hace menos de 10 s y con el sucesor sin usar: la respuesta de la rotación se dio por perdida. Emitir un
+   * refresh token hermano (hijo del presentado) que caduca en `successorExpiresAt`; `rotatedAt` no se mueve.
+   */
+  | {
+      readonly outcome: 'reissue';
+      readonly now: Date;
+      readonly successorExpiresAt: Date;
+    }
+  /** Rotado hace menos de 10 s con el sucesor ya usado, superado o tope alcanzado: 409 sin revocar ni emitir cookie. */
   | { readonly outcome: 'conflict' }
   /** Rotado hace 10 s o más: revocar la sesión completa y responder `invalid_refresh`. */
   | { readonly outcome: 'reuse' }
@@ -105,20 +121,24 @@ export class RefreshSessionPolicy {
     if (isExpired(session.expiresAt, now)) {
       return { outcome: 'invalid', reason: 'session_expired' };
     }
+    const successorExpiresAt = earliest(
+      addDays(now, this.settings.refreshTtlDays),
+      session.expiresAt,
+    );
     if (token.rotatedAt !== null) {
-      return now.getTime() - token.rotatedAt.getTime() <
+      if (
+        now.getTime() - token.rotatedAt.getTime() >=
         REFRESH_CONFLICT_WINDOW_MS
-        ? { outcome: 'conflict' }
-        : { outcome: 'reuse' };
+      ) {
+        return { outcome: 'reuse' };
+      }
+      return !token.advanced &&
+        token.reissueCount !== null &&
+        token.reissueCount < REFRESH_REISSUE_LIMIT
+        ? { outcome: 'reissue', now, successorExpiresAt }
+        : { outcome: 'conflict' };
     }
-    return {
-      outcome: 'rotate',
-      now,
-      successorExpiresAt: earliest(
-        addDays(now, this.settings.refreshTtlDays),
-        session.expiresAt,
-      ),
-    };
+    return { outcome: 'rotate', now, successorExpiresAt };
   }
 
   /** Comprobación del paso 4 de D4, dentro de la transacción, antes de insertar el sucesor. */

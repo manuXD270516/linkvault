@@ -108,6 +108,14 @@ function composeWith(provider: LlmProvider) {
   return { runTask: runTask.execute, ledger };
 }
 
+/** Copia de `classify-skills` (personal) sin la propiedad `dataSensitivity`: el caso «no declarada». */
+function undeclaredSensitivityEvaluable(): typeof classifySkillsEvaluable {
+  const task = { ...classifySkillsEvaluable.task };
+  delete task.dataSensitivity;
+  expect('dataSensitivity' in task).toBe(false);
+  return { ...classifySkillsEvaluable, task };
+}
+
 describe('recordFixtures with an in-memory upstream', () => {
   let fixturesDir: string;
 
@@ -339,5 +347,56 @@ describe('recordFixtures with an in-memory upstream', () => {
       }),
     ).rejects.toBeInstanceOf(PersonalTaskUpstreamRejected);
     expect(upstream.keys).toEqual([]);
+  });
+
+  it('Una tarea sin sensibilidad declarada se trata como personal al grabar', async () => {
+    const upstream = new FakeUpstream(() => VALID_TEXT, 'ollama');
+    const { runTask, ledger } = composeWith(upstream);
+
+    await expect(
+      recordFixtures({
+        evaluable: undeclaredSensitivityEvaluable(),
+        cases: [FIRST],
+        runTask,
+        ledger,
+        fixturesDir,
+        upstream: 'ollama',
+        overwrite: false,
+      }),
+    ).rejects.toMatchObject({
+      name: 'PersonalTaskUpstreamRejected',
+      taskName: 'classify-skills',
+      sensitivity: 'personal',
+    });
+    expect(upstream.keys).toEqual([]);
+    await expect(readFile(pathOf(FIRST), 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('Una tarea sin sensibilidad declarada se graba redactada contra el mock', async () => {
+    const dirty = JSON.stringify({
+      skills: [{ name: 'dirty@example.bo', category: 'other' }],
+    });
+    const upstream = new FakeUpstream(() => dirty);
+    const { runTask, ledger } = composeWith(upstream);
+
+    const summary = await recordFixtures({
+      evaluable: undeclaredSensitivityEvaluable(),
+      cases: [FIRST],
+      runTask,
+      ledger,
+      fixturesDir,
+      upstream: 'mock',
+      overwrite: true,
+    });
+
+    expect(summary.recorded).toEqual([]);
+    expect(summary.failed[0]?.id).toBe('es-01');
+    expect(summary.failed[0]?.reason).toContain('pii type email');
+    expect(summary.failed[0]?.reason).not.toContain('dirty@');
+    await expect(readFile(pathOf(FIRST), 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
   });
 });

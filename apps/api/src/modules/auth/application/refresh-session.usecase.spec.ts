@@ -128,9 +128,9 @@ describe('RefreshSession and Logout', () => {
       });
 
       expect(renewed.refreshToken).not.toBe(extension.refreshToken);
-      expect(harness.sessions.clientOf(await sessionIdOf(renewed.refreshToken))).toBe(
-        'extension',
-      );
+      expect(
+        harness.sessions.clientOf(await sessionIdOf(renewed.refreshToken)),
+      ).toBe('extension');
     });
 
     it('Reuso revoca la sesión', async () => {
@@ -177,16 +177,123 @@ describe('RefreshSession and Logout', () => {
       const renewed = await refresh.execute({
         refreshToken: session.refreshToken,
       });
+      const next = await refresh.execute({
+        refreshToken: renewed.refreshToken,
+      });
       harness.clock.advance(2 * SECOND);
 
+      // R2 ya rotó: R1 deja de reemitirse dentro de la ventana.
       await expect(
         refresh.execute({ refreshToken: session.refreshToken }),
       ).rejects.toBeInstanceOf(RefreshConflict);
 
       await expect(
-        refresh.execute({ refreshToken: renewed.refreshToken }),
+        refresh.execute({ refreshToken: next.refreshToken }),
       ).resolves.toMatchObject({ user: session.user });
       expect(harness.securityLog.reusedTokens).toEqual([]);
+      expect(harness.securityLog.reissuedTokens).toEqual([]);
+    });
+
+    it('Respuesta de rotación perdida', async () => {
+      // La respuesta de esta rotación se pierde: el cliente descarta el sucesor.
+      const lost = await refresh.execute({
+        refreshToken: session.refreshToken,
+      });
+      harness.clock.advance(2 * SECOND);
+
+      const recovered = await refresh.execute({
+        refreshToken: session.refreshToken,
+      });
+
+      expect(recovered.refreshToken).not.toBe(session.refreshToken);
+      expect(recovered.refreshToken).not.toBe(lost.refreshToken);
+      expect(recovered.user).toEqual(session.user);
+      expect(recovered.refreshExpiresAt).toEqual(
+        new Date(harness.clock.now().getTime() + 30 * DAY),
+      );
+      const sessionId = await sessionIdOf(session.refreshToken);
+      expect(await sessionIdOf(recovered.refreshToken)).toBe(sessionId);
+      await expect(
+        refresh.execute({ refreshToken: recovered.refreshToken }),
+      ).resolves.toMatchObject({ user: session.user });
+      expect(harness.sessions.isActive(sessionId)).toBe(true);
+    });
+
+    it('reports a reissue with userId, sessionId and reissueCount and without any token', async () => {
+      const lost = await refresh.execute({
+        refreshToken: session.refreshToken,
+      });
+      const sessionId = await sessionIdOf(session.refreshToken);
+      harness.clock.advance(SECOND);
+      const first = await refresh.execute({
+        refreshToken: session.refreshToken,
+      });
+      harness.clock.advance(SECOND);
+      const second = await refresh.execute({
+        refreshToken: session.refreshToken,
+      });
+
+      expect(harness.securityLog.reissuedTokens).toEqual([
+        { userId: session.user.id, sessionId, reissueCount: 1 },
+        { userId: session.user.id, sessionId, reissueCount: 2 },
+      ]);
+      const logged = JSON.stringify(harness.securityLog.reissuedTokens);
+      for (const secret of [
+        session.refreshToken,
+        lost.refreshToken,
+        first.refreshToken,
+        second.refreshToken,
+        hashRefreshToken(session.refreshToken),
+        first.accessToken,
+      ]) {
+        expect(logged).not.toContain(secret);
+      }
+      expect(harness.securityLog.reusedTokens).toEqual([]);
+    });
+
+    it('stops reissuing after 3 reissues and answers conflict', async () => {
+      await refresh.execute({ refreshToken: session.refreshToken });
+      for (let i = 0; i < 3; i++) {
+        harness.clock.advance(SECOND);
+        await refresh.execute({ refreshToken: session.refreshToken });
+      }
+      harness.clock.advance(SECOND);
+
+      await expect(
+        refresh.execute({ refreshToken: session.refreshToken }),
+      ).rejects.toBeInstanceOf(RefreshConflict);
+    });
+
+    it('does not reissue a token rotated before reissue existed', async () => {
+      await refresh.execute({ refreshToken: session.refreshToken });
+      const stored = harness.sessions.tokens.get(
+        hashRefreshToken(session.refreshToken),
+      );
+      if (stored) {
+        stored.reissueCount = null;
+      }
+      harness.clock.advance(2 * SECOND);
+
+      await expect(
+        refresh.execute({ refreshToken: session.refreshToken }),
+      ).rejects.toBeInstanceOf(RefreshConflict);
+    });
+
+    it('superseded siblings answer conflict and then reuse', async () => {
+      const r2 = await refresh.execute({ refreshToken: session.refreshToken });
+      harness.clock.advance(SECOND);
+      const r3 = await refresh.execute({ refreshToken: session.refreshToken });
+      harness.clock.advance(SECOND);
+      await refresh.execute({ refreshToken: r3.refreshToken });
+      harness.clock.advance(SECOND);
+
+      await expect(
+        refresh.execute({ refreshToken: r2.refreshToken }),
+      ).rejects.toBeInstanceOf(RefreshConflict);
+      harness.clock.advance(10 * SECOND);
+      await expect(
+        refresh.execute({ refreshToken: r2.refreshToken }),
+      ).rejects.toMatchObject({ reason: 'reused' });
     });
   });
 

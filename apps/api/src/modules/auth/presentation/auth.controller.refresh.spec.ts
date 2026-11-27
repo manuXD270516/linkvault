@@ -49,7 +49,10 @@ describe('AuthController refresh', () => {
   });
 
   /** Registra un usuario nuevo y devuelve su primer refresh token y su id. */
-  async function openSession(): Promise<{ refreshToken: string; userId: string }> {
+  async function openSession(): Promise<{
+    refreshToken: string;
+    userId: string;
+  }> {
     const response = await authPost(harness.app, 'register', {
       body: {
         email: `ana-${randomUUID()}@example.com`,
@@ -145,34 +148,82 @@ describe('AuthController refresh', () => {
     expect(logs).not.toContain(r2);
   });
 
+  it('Respuesta de rotación perdida', async () => {
+    const { refreshToken: r1, userId } = await openSession();
+    // El navegador abortó la petición: se ignora el Set-Cookie del sucesor R2.
+    const lost = await refresh(r1);
+    expect(lost.statusCode).toBe(200);
+    const r2 = refreshTokenFrom(lost.headers);
+    harness.clock.advance(2_000);
+
+    const recovered = await refresh(r1);
+
+    expect(recovered.statusCode).toBe(200);
+    expect(sessionResponseSchema.parse(recovered.json()).user.id).toBe(userId);
+    const r3 = refreshTokenFrom(recovered.headers);
+    expect(r3).toBeDefined();
+    expect(r3).not.toBe(r1);
+    expect(r3).not.toBe(r2);
+    // La sesión sigue viva y R3 rota.
+    expect((await refresh(r3)).statusCode).toBe(200);
+  });
+
+  it('Respuesta perdida fuera de la ventana', async () => {
+    const { refreshToken: r1 } = await openSession();
+    const lost = await refresh(r1);
+    expect(lost.statusCode).toBe(200);
+    harness.clock.advance(11_000);
+
+    const response = await refresh(r1);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ code: 'invalid_refresh' });
+    expectClearedCookie(response.headers);
+    expect((await refresh(refreshTokenFrom(lost.headers))).statusCode).toBe(
+      401,
+    );
+  });
+
   it('Refresh concurrente', async () => {
     const { refreshToken: r1 } = await openSession();
     const r2 = await rotate(r1);
+    const r3 = await rotate(r2);
     harness.clock.advance(2_000);
 
+    // R2 ya rotó: R1 deja de reemitirse dentro de la ventana.
     const conflict = await refresh(r1);
 
     expect(conflict.statusCode).toBe(409);
     expect(conflict.json()).toMatchObject({ code: 'refresh_conflict' });
     expect(conflict.headers['set-cookie']).toBeUndefined();
-    expect((await refresh(r2)).statusCode).toBe(200);
+    expect((await refresh(r3)).statusCode).toBe(200);
   });
 
   it('Tres refresh concurrentes con el mismo token', async () => {
     const { refreshToken: r1 } = await openSession();
 
-    const responses = await Promise.all([refresh(r1), refresh(r1), refresh(r1)]);
+    const responses = await Promise.all([
+      refresh(r1),
+      refresh(r1),
+      refresh(r1),
+    ]);
 
-    const statuses = responses.map((response) => response.statusCode).sort();
-    expect(statuses).toEqual([200, 409, 409]);
-    for (const response of responses.filter((r) => r.statusCode === 409)) {
-      expect(response.headers['set-cookie']).toBeUndefined();
+    expect(responses.map((response) => response.statusCode)).toEqual([
+      200, 200, 200,
+    ]);
+    const tokens = responses.map((response) =>
+      refreshTokenFrom(response.headers),
+    );
+    expect(new Set(tokens).size).toBe(3);
+    // La sesión sigue viva: uno rota y los otros dos quedan superados.
+    harness.clock.advance(1_000);
+    const [used, ...others] = tokens;
+    expect((await refresh(used)).statusCode).toBe(200);
+    for (const other of others) {
+      const superseded = await refresh(other);
+      expect(superseded.statusCode).toBe(409);
+      expect(superseded.headers['set-cookie']).toBeUndefined();
     }
-    const winner = responses.find((response) => response.statusCode === 200);
-    const r2 = refreshTokenFrom(winner?.headers ?? {});
-    expect(r2).toBeDefined();
-    // La sesión sigue viva: el sucesor rota.
-    expect((await refresh(r2)).statusCode).toBe(200);
   });
 
   it('Refresh token no guardado en claro', async () => {

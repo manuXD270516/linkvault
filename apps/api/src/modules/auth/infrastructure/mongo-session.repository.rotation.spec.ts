@@ -66,7 +66,10 @@ async function openSession(userId = `user-${randomUUID()}`) {
   return { ...opened, tokenHash: first.tokenHash };
 }
 
-function rotate(tokenHash: string, expectedClient: 'web' | 'extension' = 'web') {
+function rotate(
+  tokenHash: string,
+  expectedClient: 'web' | 'extension' = 'web',
+) {
   const successor = generateRefreshToken();
   return repository
     .rotate({
@@ -101,10 +104,13 @@ describe('MongoSessionRepository (rotation)', () => {
       sessionId: session.sessionId,
       userId: session.userId,
       refreshExpiresAt: new Date(NOW.getTime() + 30 * DAY),
+      reissued: false,
+      reissueCount: 0,
     });
     expect(await repository.findRefreshToken(session.tokenHash)).toMatchObject({
       rotatedAt: NOW,
       replacedByHash: successorHash,
+      reissueCount: 0,
     });
     expect(await repository.findRefreshToken(successorHash)).toEqual({
       tokenHash: successorHash,
@@ -114,6 +120,9 @@ describe('MongoSessionRepository (rotation)', () => {
       expiresAt: new Date(NOW.getTime() + 30 * DAY),
       rotatedAt: null,
       replacedByHash: null,
+      parentHash: session.tokenHash,
+      advancedAt: null,
+      reissueCount: null,
     });
   });
 
@@ -147,7 +156,7 @@ describe('MongoSessionRepository (rotation)', () => {
     });
   });
 
-  it('two concurrent rotations of the same token: one wins and the other gets conflict', async () => {
+  it('two concurrent rotations of the same token: one rotates and the other is reissued a sibling', async () => {
     const session = await openSession();
 
     const results = await Promise.all([
@@ -155,23 +164,17 @@ describe('MongoSessionRepository (rotation)', () => {
       rotate(session.tokenHash),
     ]);
 
-    expect(outcomes(results)).toEqual(['conflict', 'rotated']);
-    const winner = results.find(({ result }) => result.outcome === 'rotated');
-    const loser = results.find(({ result }) => result.outcome === 'conflict');
-    expect(loser?.result).toEqual({
-      outcome: 'conflict',
-      sessionId: session.sessionId,
-      userId: session.userId,
-    });
+    expect(outcomes(results)).toEqual(['rotated', 'rotated']);
     expect(
-      await repository.findRefreshToken(winner?.successorHash ?? ''),
-    ).not.toBeNull();
-    expect(
-      await repository.findRefreshToken(loser?.successorHash ?? ''),
-    ).toBeNull();
-    expect(await repository.findRefreshToken(session.tokenHash)).toMatchObject({
-      replacedByHash: winner?.successorHash,
-    });
+      results.filter(
+        ({ result }) => result.outcome === 'rotated' && result.reissued,
+      ),
+    ).toHaveLength(1);
+    for (const { successorHash } of results) {
+      expect(await repository.findRefreshToken(successorHash)).toMatchObject({
+        parentHash: session.tokenHash,
+      });
+    }
     expect(await revokedAt(session.sessionId)).toBeNull();
   });
 
@@ -184,22 +187,66 @@ describe('MongoSessionRepository (rotation)', () => {
       rotate(session.tokenHash),
     ]);
 
-    expect(outcomes(results)).toEqual(['conflict', 'conflict', 'rotated']);
+    expect(outcomes(results)).toEqual(['rotated', 'rotated', 'rotated']);
+    expect(
+      new Set(results.map(({ successorHash }) => successorHash)).size,
+    ).toBe(3);
     expect(await revokedAt(session.sessionId)).toBeNull();
     expect(
       await connection
         .collection(REFRESH_TOKENS_COLLECTION)
         .countDocuments({ sessionId: session.sessionId }),
-    ).toBe(2);
+    ).toBe(4);
+    // Al usar uno, los otros dos quedan superados.
+    clock.advance(SECOND);
+    const [used, ...others] = results;
+    expect((await rotate(used.successorHash)).result.outcome).toBe('rotated');
+    clock.advance(SECOND);
+    for (const { successorHash } of others) {
+      expect((await rotate(successorHash)).result.outcome).toBe('conflict');
+    }
+    expect(await revokedAt(session.sessionId)).toBeNull();
   });
 
   it('Refresh concurrente', async () => {
     const session = await openSession();
     const first = await rotate(session.tokenHash);
+    const second = await rotate(first.successorHash);
     clock.advance(2 * SECOND);
 
+    // R2 ya rotó: R1 deja de reemitirse aunque siga dentro de la ventana.
     expect((await rotate(session.tokenHash)).result.outcome).toBe('conflict');
-    expect((await rotate(first.successorHash)).result.outcome).toBe('rotated');
+    expect((await rotate(second.successorHash)).result.outcome).toBe('rotated');
+    expect(await revokedAt(session.sessionId)).toBeNull();
+  });
+
+  it('El hermano usado deja superados a los demás', async () => {
+    const session = await openSession();
+    const first = await rotate(session.tokenHash); // R1 -> R2
+    clock.advance(SECOND);
+    const reissue = await rotate(session.tokenHash); // R3, hermano de R2
+    expect(reissue.result).toMatchObject({
+      outcome: 'rotated',
+      reissued: true,
+    });
+    clock.advance(SECOND);
+    const usedAt = clock.now();
+
+    const used = await rotate(reissue.successorHash); // R3 se usa
+
+    expect(used.result).toMatchObject({ outcome: 'rotated', reissued: false });
+    expect(await repository.findRefreshToken(session.tokenHash)).toMatchObject({
+      advancedAt: usedAt,
+    });
+    expect(
+      await repository.findRefreshToken(first.successorHash),
+    ).toMatchObject({ rotatedAt: usedAt, advancedAt: usedAt });
+    clock.advance(SECOND);
+    expect((await rotate(first.successorHash)).result.outcome).toBe('conflict');
+    expect(await revokedAt(session.sessionId)).toBeNull();
+    clock.advance(10 * SECOND);
+    expect((await rotate(first.successorHash)).result.outcome).toBe('reused');
+    expect(await revokedAt(session.sessionId)).not.toBeNull();
   });
 
   it('returns conflict inside the window even after the successor was used', async () => {
@@ -211,6 +258,205 @@ describe('MongoSessionRepository (rotation)', () => {
 
     expect((await rotate(session.tokenHash)).result.outcome).toBe('conflict');
     expect(await revokedAt(session.sessionId)).toBeNull();
+  });
+
+  it('Respuesta de rotación perdida', async () => {
+    const session = await openSession();
+    const first = await rotate(session.tokenHash);
+    // La respuesta se perdió: el sucesor se descarta y el cliente vuelve con el token viejo 2 s después.
+    clock.advance(2 * SECOND);
+
+    const { result, successorHash } = await rotate(session.tokenHash);
+
+    expect(result).toEqual({
+      outcome: 'rotated',
+      sessionId: session.sessionId,
+      userId: session.userId,
+      refreshExpiresAt: new Date(NOW.getTime() + 2 * SECOND + 30 * DAY),
+      reissued: true,
+      reissueCount: 1,
+    });
+    expect(successorHash).not.toBe(first.successorHash);
+    expect(await repository.findRefreshToken(successorHash)).toMatchObject({
+      sessionId: session.sessionId,
+      parentHash: session.tokenHash,
+      rotatedAt: null,
+      advancedAt: null,
+    });
+    // La ventana sigue anclada a la primera rotación y el primer sucesor queda como estaba.
+    expect(await repository.findRefreshToken(session.tokenHash)).toMatchObject({
+      rotatedAt: NOW,
+      replacedByHash: first.successorHash,
+      reissueCount: 1,
+    });
+    expect(await revokedAt(session.sessionId)).toBeNull();
+  });
+
+  it('Respuesta perdida fuera de la ventana', async () => {
+    const session = await openSession();
+    await rotate(session.tokenHash);
+    clock.advance(11 * SECOND);
+
+    const { result } = await rotate(session.tokenHash);
+
+    expect(result).toEqual({
+      outcome: 'reused',
+      sessionId: session.sessionId,
+      userId: session.userId,
+    });
+    expect(await revokedAt(session.sessionId)).not.toBeNull();
+    expect(
+      await connection
+        .collection(REFRESH_TOKENS_COLLECTION)
+        .countDocuments({ sessionId: session.sessionId }),
+    ).toBe(2);
+  });
+
+  it('Tope de reemisiones', async () => {
+    const session = await openSession();
+    await rotate(session.tokenHash);
+
+    for (const expected of [1, 2, 3]) {
+      clock.advance(SECOND);
+      const { result } = await rotate(session.tokenHash);
+      expect(result).toMatchObject({
+        outcome: 'rotated',
+        reissued: true,
+        reissueCount: expected,
+      });
+    }
+    clock.advance(SECOND);
+    const fourth = await rotate(session.tokenHash);
+
+    expect(fourth.result).toEqual({
+      outcome: 'conflict',
+      sessionId: session.sessionId,
+      userId: session.userId,
+    });
+    expect(await repository.findRefreshToken(fourth.successorHash)).toBeNull();
+    expect(await revokedAt(session.sessionId)).toBeNull();
+    expect(
+      await connection
+        .collection(REFRESH_TOKENS_COLLECTION)
+        .countDocuments({ sessionId: session.sessionId }),
+    ).toBe(5);
+  });
+
+  it('Token rotado antes de la reemisión', async () => {
+    const session = await openSession();
+    await rotate(session.tokenHash);
+    // Una versión sin reemisión no escribía `reissueCount`.
+    await connection
+      .collection(REFRESH_TOKENS_COLLECTION)
+      .updateOne(
+        { tokenHash: session.tokenHash },
+        { $unset: { reissueCount: '' } },
+      );
+    clock.advance(2 * SECOND);
+
+    const { result, successorHash } = await rotate(session.tokenHash);
+
+    expect(result).toEqual({
+      outcome: 'conflict',
+      sessionId: session.sessionId,
+      userId: session.userId,
+    });
+    expect(await repository.findRefreshToken(successorHash)).toBeNull();
+    expect(await revokedAt(session.sessionId)).toBeNull();
+  });
+
+  describe('revocation with live siblings', () => {
+    /** R1 rotado a R2 y reemitido como R3: dos hermanos vivos, ninguno usado. */
+    async function withLiveSiblings() {
+      const session = await openSession();
+      const r2 = await rotate(session.tokenHash);
+      clock.advance(SECOND);
+      const r3 = await rotate(session.tokenHash);
+      expect(r3.result).toMatchObject({ reissued: true });
+      return { session, siblings: [r2.successorHash, r3.successorHash] };
+    }
+
+    async function expectAllRevoked(siblings: readonly string[]) {
+      for (const hash of siblings) {
+        expect((await rotate(hash)).result).toEqual({
+          outcome: 'invalid',
+          reason: 'session_revoked',
+        });
+      }
+    }
+
+    it('Logout revokes the session and every live sibling gets session_revoked', async () => {
+      const { session, siblings } = await withLiveSiblings();
+
+      await repository.revokeSession(session.sessionId);
+
+      await expectAllRevoked([session.tokenHash, ...siblings]);
+    });
+
+    it('Reuse revokes the session and every live sibling gets session_revoked', async () => {
+      const { session, siblings } = await withLiveSiblings();
+      clock.advance(11 * SECOND);
+
+      expect((await rotate(session.tokenHash)).result.outcome).toBe('reused');
+
+      await expectAllRevoked(siblings);
+    });
+
+    it('revokeUserSessionsExcept revokes the siblings of the other sessions and keeps the kept one', async () => {
+      const userId = `user-${randomUUID()}`;
+      const first = generateRefreshToken();
+      const revoked = await repository.open(userId, first.tokenHash);
+      const r2 = await rotate(first.tokenHash);
+      clock.advance(SECOND);
+      const r3 = await rotate(first.tokenHash);
+      const kept = generateRefreshToken();
+      const keptSession = await repository.open(userId, kept.tokenHash);
+
+      expect(
+        await repository.revokeUserSessionsExcept(
+          userId,
+          keptSession.sessionId,
+        ),
+      ).toBe(1);
+
+      await expectAllRevoked([r2.successorHash, r3.successorHash]);
+      expect(await revokedAt(revoked.sessionId)).not.toBeNull();
+      expect((await rotate(kept.tokenHash)).result.outcome).toBe('rotated');
+    });
+  });
+
+  it('Reemisión sin token en claro', async () => {
+    const first = generateRefreshToken();
+    const second = generateRefreshToken();
+    const third = generateRefreshToken();
+    const opened = await repository.open(
+      `user-${randomUUID()}`,
+      first.tokenHash,
+    );
+    await repository.rotate({
+      tokenHash: first.tokenHash,
+      successorHash: second.tokenHash,
+      expectedClient: 'web',
+    });
+    clock.advance(2 * SECOND);
+    const reissue = await repository.rotate({
+      tokenHash: first.tokenHash,
+      successorHash: third.tokenHash,
+      expectedClient: 'web',
+    });
+    expect(reissue).toMatchObject({ outcome: 'rotated', reissued: true });
+
+    const dump = JSON.stringify(
+      await connection
+        .collection(REFRESH_TOKENS_COLLECTION)
+        .find({ sessionId: opened.sessionId })
+        .toArray(),
+    );
+
+    for (const { token, tokenHash } of [first, second, third]) {
+      expect(dump).not.toContain(token);
+      expect(dump).toContain(tokenHash);
+    }
   });
 
   it('rejects rotation when expectedClient does not match the session', async () => {
@@ -225,9 +471,9 @@ describe('MongoSessionRepository (rotation)', () => {
 
     expect(result).toEqual({ outcome: 'invalid', reason: 'unknown_token' });
     expect(await revokedAt(opened.sessionId)).toBeNull();
-    expect(
-      (await rotate(first.tokenHash, 'extension')).result.outcome,
-    ).toBe('rotated');
+    expect((await rotate(first.tokenHash, 'extension')).result.outcome).toBe(
+      'rotated',
+    );
   });
 
   it('treats legacy sessions without client as web', async () => {

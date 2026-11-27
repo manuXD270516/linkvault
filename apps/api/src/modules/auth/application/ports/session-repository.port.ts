@@ -24,6 +24,12 @@ export interface StoredRefreshToken {
   readonly expiresAt: Date;
   readonly rotatedAt: Date | null;
   readonly replacedByHash: string | null;
+  /** Token que originó este; `null` si no lo tiene (login, registro o emitido antes de la reemisión). */
+  readonly parentHash: string | null;
+  /** La familia ya avanzó más allá de este token (su sucesor se usó o quedó superado). */
+  readonly advancedAt: Date | null;
+  /** Reemisiones hechas; `null` si el token se rotó antes de que existiera la reemisión o aún no se rotó. */
+  readonly reissueCount: number | null;
 }
 
 export interface RotateRefreshToken {
@@ -46,6 +52,10 @@ export type RotationResult =
       readonly userId: string;
       /** Caducidad del sucesor (Max-Age de la cookie nueva). */
       readonly refreshExpiresAt: Date;
+      /** `true` si no fue una rotación sino la reemisión de un hermano (respuesta de rotación perdida, ADR-072). */
+      readonly reissued: boolean;
+      /** Reemisiones acumuladas del token presentado tras esta; 0 en una rotación normal. */
+      readonly reissueCount: number;
     }
   | {
       readonly outcome: 'conflict';

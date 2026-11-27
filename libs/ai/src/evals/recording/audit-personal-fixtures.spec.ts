@@ -55,6 +55,31 @@ describe('auditPersonalFixtures', () => {
     expect(audit.issues[0]?.message).toContain('openrouter');
   });
 
+  it('Una tarea sin sensibilidad declarada entra en la auditoría de fixtures', async () => {
+    const dir = join(root, 'classify-skills');
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, 'undeclared.json'),
+      JSON.stringify({
+        source: 'recorded:openrouter:some-model',
+        text: '{}',
+        model: 'some-model',
+        usage: { inputTokens: 0, outputTokens: 0 },
+      }),
+    );
+    const task = { ...classifySkillsEvaluable.task };
+    delete task.dataSensitivity;
+    expect('dataSensitivity' in task).toBe(false);
+
+    const audit = await auditPersonalFixtures(root, [
+      eraseEvaluableTask({ ...classifySkillsEvaluable, task }),
+    ]);
+    expect(audit.checked).toBe(1);
+    expect(audit.issues[0]?.task).toBe('classify-skills');
+    expect(audit.issues[0]?.file).toBe('undeclared.json');
+    expect(audit.issues[0]?.message).toContain('openrouter');
+  });
+
   it('Un fixture personal escrito a mano sigue valiendo', async () => {
     const audit = await auditPersonalFixtures(REAL_FIXTURES, [
       eraseEvaluableTask(classifySkillsEvaluable),

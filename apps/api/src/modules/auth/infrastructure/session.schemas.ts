@@ -34,6 +34,18 @@ export interface RefreshTokenDocument {
   expiresAt: Date;
   rotatedAt: Date | null;
   replacedByHash: string | null;
+  /**
+   * Hash del token que originó este (`null` en login, registro y tokens anteriores a la reemisión). Los hijos del mismo
+   * padre son hermanos (D3 de session-refresh-abort).
+   */
+  parentHash?: string | null;
+  /** La familia ya avanzó más allá de este token: su sucesor se usó o el token quedó superado. */
+  advancedAt?: Date | null;
+  /**
+   * Reemisiones hechas. **Sin valor por defecto**: que falte distingue un token rotado por una versión sin reemisión
+   * (nunca se reemite) de uno con 0; solo la rotación lo escribe.
+   */
+  reissueCount?: number;
 }
 
 const schemaOptions = {
@@ -67,9 +79,14 @@ export const refreshTokenSchema = new Schema<RefreshTokenDocument>(
     expiresAt: { type: Date, required: true },
     rotatedAt: { type: Date, default: null },
     replacedByHash: { type: String, default: null },
+    parentHash: { type: String, default: null },
+    advancedAt: { type: Date, default: null },
+    reissueCount: { type: Number, required: false },
   },
   { ...schemaOptions, collection: REFRESH_TOKENS_COLLECTION },
 );
 
 refreshTokenSchema.index({ tokenHash: 1 }, { unique: true });
 refreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// Supersesión de hermanos al rotar uno de ellos (D3 de session-refresh-abort). No único: un padre tiene varios hijos.
+refreshTokenSchema.index({ parentHash: 1 });
